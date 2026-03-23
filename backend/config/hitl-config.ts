@@ -107,6 +107,13 @@ export const DEFAULT_HITL_CONFIG: HITLConfig = {
       requireApproval: true,
       description: '图片序号标注需确认（可移动、修改序号）',
     },
+    {
+      actionType: 'story.plan_review',
+      enabled: true,
+      priority: 'medium',
+      requireApproval: true,
+      description: '绘本故事策划稿确认需要人工确认',
+    },
     
     // 系统操作
     {

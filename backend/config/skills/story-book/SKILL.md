@@ -4,6 +4,7 @@ description: 绘本故事生成系统 - 先生成并确认《绘本故事策划�
 allowed-tools:
   - write_file
   - edit_file
+  - request_story_plan_review
   - write_todos
   - generate_image
   - split_grid_image
@@ -25,7 +26,7 @@ allowed-tools:
 
 1. 单一事实源规则：`《绘本故事策划稿.md》` 是整个流程唯一的策划依据。后续角色图片生成、分镜图片生成、台词配音生成，都必须基于这份已确认并保留在上下文中的 Markdown 文档执行。
 2. 策划稿确认闸门：用户未明确确认 `《绘本故事策划稿.md》` 前，禁止进入角色图、分镜图、配音生成。
-3. 策划稿修改规则：若用户要求修改，你必须根据意见生成新的 `《绘本故事策划稿.md》`，重新写入磁盘，并再次以 Markdown 形式展示给用户确认。
+3. 策划稿修改规则：若用户要求修改，或 `request_story_plan_review` 返回了用户编辑后的 `markdownContent`，你必须更新现有 `《绘本故事策划稿.md》`，然后再次通过 `request_story_plan_review` 请求确认。
 4. 角色一致性规则：必须固定 4 个角色，先生成四宫格角色设定图，再拆分为 4 张单角色参考图，后续分镜只能使用拆分后的角色图作为参考输入。
 5. 分镜提示词确认闸门：每一页分镜图的提示词都必须先展示给用户确认；未确认前禁止调用 `edit_image` 生成该页分镜图。
 6. 台词来源规则：每页音频文案只能来自 `《绘本故事策划稿.md》` 中该页的“故事解说”，禁止使用图片反推台词。
@@ -50,9 +51,9 @@ allowed-tools:
 
 ## 工作流程（6 步固定流程）
 
-### 步骤 1：生成《绘本故事策划稿.md》并展示给用户确认
+### 步骤 1：生成《绘本故事策划稿.md》并触发 HITL 确认
 
-**任务**：根据用户主题生成完整策划稿，先写入 workspace 根目录，再以 Markdown 形式展示在前端 HITL 中供用户确认。
+**任务**：根据用户主题生成完整策划稿，先写入 workspace 根目录，再调用 `request_story_plan_review` 以 Markdown 卡片形式在前端 HITL 中供用户确认。
 
 **文件要求**：
 - 文件名固定为：`绘本故事策划稿.md`
@@ -61,9 +62,10 @@ allowed-tools:
 **执行要求**：
 - 首次进入流程时，先调用 `write_todos` 创建 6 项 Todo。
 - 然后调用 `write_file` 将完整策划稿写入 workspace 根目录的 `绘本故事策划稿.md`。
-- 写入完成后，在同一轮回复中直接以 Markdown 原文展示策划稿内容，让前端 HITL 按 Markdown 渲染供用户确认。
-- 展示完成后必须明确询问：`请确认《绘本故事策划稿》，或直接提出需要修改的地方。`
-- 如果用户提出修改意见，必须重新生成完整策划稿；若文件已存在，使用 `edit_file` 更新 `绘本故事策划稿.md`，不要再次使用只适合新建文件的 `write_file`，然后再次完整展示新的 Markdown 内容。
+- 写入完成后，立即调用 `request_story_plan_review`，将 `filePath`、`title`、`markdownContent` 传给前端 HITL 进行 Markdown 卡片确认。
+- 不要把完整策划稿作为普通 assistant 文本再次完整输出到聊天区。
+- 若 `request_story_plan_review` 返回的 `markdownContent` 与文件当前内容不同，必须立即调用 `edit_file` 回写 `绘本故事策划稿.md`。
+- 只有在用户通过 HITL 明确确认策划稿后，才能继续后续步骤。
 - 未获得用户明确确认前，禁止生成角色图、分镜图、音频。
 
 ### 步骤 2：确认策划稿并固定 4 个角色
@@ -255,7 +257,8 @@ split_grid_image(
 
 | 场景 | 使用工具 | 规则 |
 |---|---|---|
-| 首次写入策划稿 | `write_file` | 先写入 `绘本故事策划稿.md`，再把 Markdown 展示给用户 |
+| 首次写入策划稿 | `write_file` | 先写入 `绘本故事策划稿.md` |
+| 策划稿确认 | `request_story_plan_review` | 触发 Markdown HITL 确认；若用户编辑则回写文件 |
 | 修改已存在策划稿 | `edit_file` | 用户提出修改意见后更新现有 Markdown 文件 |
 | 创建或更新 Todo | `write_todos` | 对话开始即创建；每步完成后立即更新 |
 | 生成四宫格角色图 | `generate_image` | 只生成一张基准角色设定图 |

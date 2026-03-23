@@ -10,6 +10,7 @@ import './split-grid-image.js';
 import './generate-audio.js';
 import './batch-tool-wrapper.js';
 import './generate-script-from-image.js';
+import './request-story-plan-review.js';
 
 export { createTool, registerTool, getRegisteredToolNames } from './registry.js';
 export type { ToolConfig, ToolContext } from './registry.js';

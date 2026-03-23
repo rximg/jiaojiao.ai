@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Bot } from 'lucide-react';
 import type { HitlBlockRecord } from '@/types/types';
 import DocumentBlock from './DocumentBlock';
+import MarkdownDocumentBlock from './MarkdownDocumentBlock';
 import ImageBlock from './ImageBlock';
 import EditableDocumentBlock from './EditableDocumentBlock';
 import ImageWithBoundingBoxes from './ImageWithBoundingBoxes';
@@ -13,7 +14,7 @@ export interface PendingHitlRequest {
   timeout: number;
 }
 
-const ACTION_TITLE: Record<string, string> = {  'ai.batch_tool_call': '批量执行工具？',  'ai.text2image': '生成图像？',
+const ACTION_TITLE: Record<string, string> = {  'story.plan_review': '确认绘本故事策划稿？',  'ai.batch_tool_call': '批量执行工具？',  'ai.text2image': '生成图像？',
   'ai.text2speech': '合成语音？',
   'ai.vl_script': '以图生剧本？',
   'ai.image_label_order': '标注图片序号？',
@@ -52,7 +53,7 @@ function formatRemaining(ms: number): string {
 }
 
 export default function HitlConfirmBlock({ request, sessionId, onContinue, onCancel, onAddAllowlist }: HitlConfirmBlockProps) {
-  const resolved = 'approved' in request ? { approved: request.approved } : undefined;
+  const resolved = useMemo(() => ('approved' in request ? { approved: request.approved } : undefined), [request]);
   const title = ACTION_TITLE[request.actionType] ?? '确认操作';
   const payload = request.payload;
   const timeoutMs = !resolved && 'timeout' in request ? request.timeout : 0;
@@ -108,6 +109,7 @@ export default function HitlConfirmBlock({ request, sessionId, onContinue, onCan
   const [labelAnnotations, setLabelAnnotations] = useState<Array<{ number: number; x: number; y: number }>>([]);
   const labelAnnotationsRef = useRef<Array<{ number: number; x: number; y: number }>>([]);
   const [editableVlUserPrompt, setEditableVlUserPrompt] = useState('');
+  const [editableMarkdownContent, setEditableMarkdownContent] = useState('');
 
   // 加载 promptFile 内容
   useEffect(() => {
@@ -175,6 +177,12 @@ export default function HitlConfirmBlock({ request, sessionId, onContinue, onCan
     setEditableVlUserPrompt(up);
   }, [resolved, request.actionType, payload.userPrompt]);
 
+  useEffect(() => {
+    if (resolved || request.actionType !== 'story.plan_review') return;
+    const markdownContent = typeof payload.markdownContent === 'string' ? payload.markdownContent : '';
+    setEditableMarkdownContent(markdownContent);
+  }, [resolved, request.actionType, payload.markdownContent]);
+
   const handleContinue = useCallback(() => {
     if (!onContinue) return;
     stopCountdown();
@@ -195,10 +203,13 @@ export default function HitlConfirmBlock({ request, sessionId, onContinue, onCan
     } else if (request.actionType === 'ai.vl_script' && !resolved) {
       const trimmed = editableVlUserPrompt.trim();
       onContinue(trimmed ? { userPrompt: trimmed } : undefined);
+    } else if (request.actionType === 'story.plan_review' && !resolved) {
+      const trimmed = editableMarkdownContent.trim();
+      onContinue(trimmed ? { markdownContent: trimmed } : undefined);
     } else {
       onContinue();
     }
-  }, [onContinue, request.actionType, resolved, editablePrompt, editableTexts, promptLoadedFromFile, labelAnnotations, editableVlUserPrompt, stopCountdown]);
+  }, [onContinue, request.actionType, resolved, editablePrompt, editableTexts, promptLoadedFromFile, labelAnnotations, editableVlUserPrompt, editableMarkdownContent, stopCountdown]);
 
   const renderPayload = () => {
     // ── 批量模式：统一展示子任务列表 ──
@@ -324,6 +335,25 @@ export default function HitlConfirmBlock({ request, sessionId, onContinue, onCan
       const content = paths.length > 0 ? paths.map((p: unknown) => `• ${String(p)}`).join('\n') : '无待删除文件';
       return <DocumentBlock pathOrContent={content} title="待删除文件" />;
     }
+    if (request.actionType === 'story.plan_review') {
+      const markdownContent = typeof payload.markdownContent === 'string' ? payload.markdownContent : '';
+      const documentTitle = typeof payload.title === 'string' ? payload.title : '绘本故事策划稿';
+      if (resolved) {
+        return <MarkdownDocumentBlock content={markdownContent} title={documentTitle} />;
+      }
+      if (payload.allowEdit) {
+        return (
+          <EditableDocumentBlock
+            value={editableMarkdownContent}
+            onChange={setEditableMarkdownContent}
+            title={documentTitle}
+            placeholder="输入或编辑绘本故事策划稿 Markdown..."
+            minRows={16}
+          />
+        );
+      }
+      return <MarkdownDocumentBlock content={markdownContent} title={documentTitle} />;
+    }
     return (
       <pre className="text-xs whitespace-pre-wrap break-words max-h-32 overflow-auto rounded bg-background/80 p-2 border border-border/50">
         {JSON.stringify(payload, null, 2)}
@@ -356,7 +386,7 @@ export default function HitlConfirmBlock({ request, sessionId, onContinue, onCan
                 onClick={handleContinue}
                 className="px-3 py-1.5 text-sm rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
               >
-                {payload._batchMode ? '全部执行' : '继续执行'}
+                {typeof payload.confirmText === 'string' ? payload.confirmText : payload._batchMode ? '全部执行' : '继续执行'}
               </button>
               <button
                 type="button"
@@ -370,7 +400,7 @@ export default function HitlConfirmBlock({ request, sessionId, onContinue, onCan
                 }}
                 className="px-3 py-1.5 text-sm rounded-xl border border-border hover:bg-muted/80 transition-colors"
               >
-                取消执行
+                {typeof payload.cancelText === 'string' ? payload.cancelText : '取消执行'}
               </button>
               <button
                 type="button"
