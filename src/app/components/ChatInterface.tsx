@@ -10,6 +10,7 @@ import HitlModeDialog, { type HitlPolicy, type HitlMode } from './HitlModeDialog
 import TodoPanel from './TodoPanel';
 import WorkspacePanel from './WorkspacePanel';
 import { useChat } from '../../providers/ChatProvider';
+import { isRenderableMessage } from '../../lib/chat-messages';
 
 interface ChatInterfaceProps {
   loadSessionId: string | null;
@@ -39,6 +40,7 @@ export default function ChatInterface({
     adjustTextareaHeight();
   }, [input, adjustTextareaHeight]);
   const { messages, todos, isLoading, sendMessage, stopStream, currentSessionId, createNewSession, loadSession, resetSession, lastArtifactTime, pendingHitlRequest, respondConfirm, ttsProgressLive } = useChat();
+  const visibleMessages = messages.filter((message) => message.role !== 'assistant' || isRenderableMessage(message));
   const waitingForConfirmation = Boolean(pendingHitlRequest);
   const [showWelcome, setShowWelcome] = useState(true);
   const [showWorkspace] = useState(true);
@@ -326,7 +328,7 @@ export default function ChatInterface({
             {showWelcome && messages.length === 0 && (
               <WelcomeMessage />
             )}
-            {messages.map((message) => (
+            {visibleMessages.map((message) => (
               <React.Fragment key={message.id}>
                 {message.hitlBlock && !message.content ? (
                   <HitlConfirmBlock request={message.hitlBlock} sessionId={currentSessionId} />

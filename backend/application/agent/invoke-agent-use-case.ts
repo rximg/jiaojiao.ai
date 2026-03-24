@@ -134,6 +134,10 @@ function extractStepResultsFromContent(content: string): StepResult[] {
   return results;
 }
 
+function shouldEmitAssistantMessage(content: string, stepResults: StepResult[]): boolean {
+  return content.trim().length > 0 || stepResults.length > 0;
+}
+
 /**
  * 执行流式调用。成功返回 sessionId，用户中止返回 'stream-aborted'。
  */
@@ -206,6 +210,13 @@ export async function invokeAgentUseCase(
         const msg = newMessages[0];
         const role = normalizeMessageRole(msg) ?? 'assistant';
         const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content ?? '');
+        let stepResults = extractStepResultsFromContent(content);
+        if (resolveStepResultPaths && stepResults.length > 0) {
+          stepResults = await resolveStepResultPaths(sessionId, stepResults);
+        }
+        if (!shouldEmitAssistantMessage(content, stepResults)) {
+          continue;
+        }
         const messageIdFromChunk = typeof msg.id === 'string' && msg.id.length > 0 ? msg.id : null;
         const stableId: string = messageIdFromChunk ?? latestAssistantMessageId ?? `stream-${effectiveSessionId}`;
         // 同一条 assistant 消息的流式增量应复用同一个 ID；
@@ -214,10 +225,6 @@ export async function invokeAgentUseCase(
         // 同步更新 runCtx.messageId，确保工具执行期间（batch/tts 等）pushProgress 引用正确的消息 ID
         // LangGraph stream 的 state 顶层不含 tool_calls，此处是唯一可靠的更新时机
         runCtx.messageId = stableId;
-        let stepResults = extractStepResultsFromContent(content);
-        if (resolveStepResultPaths && stepResults.length > 0) {
-          stepResults = await resolveStepResultPaths(sessionId, stepResults);
-        }
         const mapped = [
           {
             id: stableId,

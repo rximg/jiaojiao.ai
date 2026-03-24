@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import type { Message, TodoItem, StepResult, BatchProgress } from '../types/types';
+import { isRenderableMessage, sanitizeMessages } from '../lib/chat-messages';
 
 interface AgentErrorState {
   message: string;
@@ -132,7 +133,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       }
 
       // 尝试找到对应的消息（按顺序，第n个completed todo对应第n个assistant消息）
-      const assistantMessages = allMessages.filter(m => m.role === 'assistant');
+      const assistantMessages = allMessages.filter((m) => m.role === 'assistant' && isRenderableMessage(m));
       const completedIndex = currentTodos.slice(0, index + 1).filter(t => t.status === 'completed').length - 1;
       
       if (assistantMessages[completedIndex]) {
@@ -174,7 +175,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                 }
               : newMsg;
           });
-          const updated = [...prevDeduped, ...mergedNew];
+          const updated = sanitizeMessages([...prevDeduped, ...mergedNew]);
           allMessagesRef.current = updated;
           return updated;
         });
@@ -501,10 +502,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       
       // 加载消息（保留 hitlBlock，标准化 timestamp 为 Date）
       if (sessionData.messages && Array.isArray(sessionData.messages)) {
-        const normalized = sessionData.messages.map((m: Message & { timestamp?: Date | string }) => ({
+        const normalized = sanitizeMessages(sessionData.messages.map((m: Message & { timestamp?: Date | string }) => ({
           ...m,
           timestamp: m.timestamp instanceof Date ? m.timestamp : new Date(m.timestamp || Date.now()),
-        }));
+        })));
         setMessages(normalized);
         allMessagesRef.current = normalized;
       } else {

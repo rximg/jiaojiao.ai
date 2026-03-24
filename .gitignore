@@ -11,6 +11,8 @@ dist-electron/
 
 # Planning-with-files working dir (temporary; delete when task complete)
 .planning/
+.worktrees/
+CLAUDE.md
 
 # IDE
 .vscode/
