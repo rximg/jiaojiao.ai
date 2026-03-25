@@ -134,7 +134,36 @@ function extractStepResultsFromContent(content: string): StepResult[] {
   return results;
 }
 
+function isStoryPlanReviewPayload(content: string): boolean {
+  if (!content || typeof content !== 'string') return false;
+
+  try {
+    const parsed = JSON.parse(content) as {
+      filePath?: unknown;
+      title?: unknown;
+      markdownContent?: unknown;
+      reviewStage?: unknown;
+    };
+
+    return (
+      typeof parsed.filePath === 'string' &&
+      parsed.filePath.trim().toLowerCase().endsWith('.md') &&
+      typeof parsed.markdownContent === 'string' &&
+      parsed.markdownContent.trim().length > 0 &&
+      parsed.markdownContent.includes('#') &&
+      typeof parsed.reviewStage === 'string' &&
+      parsed.reviewStage === 'story_plan' &&
+      (typeof parsed.title === 'undefined' || typeof parsed.title === 'string')
+    );
+  } catch {
+    return false;
+  }
+}
+
 function shouldEmitAssistantMessage(content: string, stepResults: StepResult[]): boolean {
+  if (isStoryPlanReviewPayload(content)) {
+    return false;
+  }
   return content.trim().length > 0 || stepResults.length > 0;
 }
 

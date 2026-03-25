@@ -5,6 +5,8 @@
 
 export type HitlMode = 'auto' | 'allowlist' | 'strict';
 
+const NEVER_AUTO_APPROVE_ACTIONS = new Set(['story.plan_review']);
+
 /**
  * 判断给定 actionType 是否应自动通过（无需弹确认框）
  * @param mode 执行模式：auto=完全自动，allowlist=按需确认，strict=每次确认
@@ -16,6 +18,7 @@ export function shouldAutoApprove(
   allowlist: Set<string>,
   actionType: string
 ): boolean {
+  if (NEVER_AUTO_APPROVE_ACTIONS.has(actionType)) return false;
   if (mode === 'auto') return true;
   if (mode === 'allowlist' && allowlist.has(actionType)) return true;
   return false;
