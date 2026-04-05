@@ -243,28 +243,29 @@ export async function invokeAgentUseCase(
         if (resolveStepResultPaths && stepResults.length > 0) {
           stepResults = await resolveStepResultPaths(sessionId, stepResults);
         }
-        if (!shouldEmitAssistantMessage(content, stepResults)) {
-          continue;
-        }
-        const messageIdFromChunk = typeof msg.id === 'string' && msg.id.length > 0 ? msg.id : null;
-        const stableId: string = messageIdFromChunk ?? latestAssistantMessageId ?? `stream-${effectiveSessionId}`;
-        // 同一条 assistant 消息的流式增量应复用同一个 ID；
-        // 但同一轮 run 中出现新的 assistant 消息时，必须切换到新的消息 ID，避免前端按 ID 去重时把后一条覆盖前一条。
-        latestAssistantMessageId = stableId;
-        // 同步更新 runCtx.messageId，确保工具执行期间（batch/tts 等）pushProgress 引用正确的消息 ID
-        // LangGraph stream 的 state 顶层不含 tool_calls，此处是唯一可靠的更新时机
-        runCtx.messageId = stableId;
-        const mapped = [
-          {
-            id: stableId,
-            role,
-            content,
-            ...(stepResults.length > 0 ? { stepResults } : {}),
-          },
-        ];
-        callbacks.onMessage(effectiveSessionId, mapped);
-        if (stepResults.length > 0 && callbacks.onStepResult) {
-          callbacks.onStepResult(effectiveSessionId, stableId, stepResults);
+        // 不向 UI 推送某些 assistant 片段（如空内容轮次、策划稿 JSON），但不得 skip 本 chunk 后续的
+        // onToolCall / onTodoUpdate，否则同一 state 里的 todos 更新会被 continue 吞掉。
+        if (shouldEmitAssistantMessage(content, stepResults)) {
+          const messageIdFromChunk = typeof msg.id === 'string' && msg.id.length > 0 ? msg.id : null;
+          const stableId: string = messageIdFromChunk ?? latestAssistantMessageId ?? `stream-${effectiveSessionId}`;
+          // 同一条 assistant 消息的流式增量应复用同一个 ID；
+          // 但同一轮 run 中出现新的 assistant 消息时，必须切换到新的消息 ID，避免前端按 ID 去重时把后一条覆盖前一条。
+          latestAssistantMessageId = stableId;
+          // 同步更新 runCtx.messageId，确保工具执行期间（batch/tts 等）pushProgress 引用正确的消息 ID
+          // LangGraph stream 的 state 顶层不含 tool_calls，此处是唯一可靠的更新时机
+          runCtx.messageId = stableId;
+          const mapped = [
+            {
+              id: stableId,
+              role,
+              content,
+              ...(stepResults.length > 0 ? { stepResults } : {}),
+            },
+          ];
+          callbacks.onMessage(effectiveSessionId, mapped);
+          if (stepResults.length > 0 && callbacks.onStepResult) {
+            callbacks.onStepResult(effectiveSessionId, stableId, stepResults);
+          }
         }
       }
     }

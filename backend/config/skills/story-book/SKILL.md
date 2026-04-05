@@ -1,18 +1,20 @@
 ---
-name: story-book
+
+## name: story-book
+
 description: 绘本故事生成系统 - 先生成并确认《绘本故事策划稿.md》，再基于策划稿生成四宫格角色图、逐页确认分镜提示词并生成配图与配音
 allowed-tools:
-  - write_file
-  - edit_file
-  - request_story_plan_review
-  - write_todos
-  - generate_image
-  - split_grid_image
-  - edit_image
-  - generate_audio
-  - batch_tool_call
-  - finalize_workflow
----
+
+- write_file
+- edit_file
+- request_story_plan_review
+- write_todos
+- generate_image
+- split_grid_image
+- edit_image
+- generate_audio
+- batch_tool_call
+- finalize_workflow
 
 # 绘本故事生成系统
 
@@ -31,6 +33,7 @@ allowed-tools:
 5. 分镜提示词确认闸门：每一页分镜图的提示词都必须先展示给用户确认；未确认前禁止调用 `edit_image` 生成该页分镜图。
 6. 台词来源规则：每页音频文案只能来自 `《绘本故事策划稿.md》` 中该页的“故事解说”，禁止使用图片反推台词。
 7. 角色注入规则：每页分镜出图时，`imagePaths` 只能传入该页“出现的角色”对应的拆分角色图，禁止把整张四宫格角色图当作唯一参考图。
+8. **HITL 确认后禁止「聊天区二次确认」**：`request_story_plan_review` 一旦成功返回（表示用户已在 HITL 卡片中点击确认），**禁止**在普通 assistant 文本里再次输出策划稿摘要、故事大纲复述、Markdown 任务清单或复选框（例如 `- [ ] 策划稿确认`、`[ ] 策划稿确认`）、「请确认策划稿」等任何模仿「待用户确认」的表述。用户已经确认过，聊天区不得出现第二个确认交互。此时**必须**立即用工具推进：先 `write_todos`（第 1 项 completed、第 2 项按进度更新），然后进入步骤 3 调用 `generate_image`（四宫格角色图）等，**不要**先用长文总结代替工具调用。
 
 ## Todo 列表管理
 
@@ -44,6 +47,7 @@ allowed-tools:
 6. `整合素材并完成绘本`
 
 规则：
+
 - 第 1 项在首次生成并写入策划稿后即可标记为 completed。
 - 第 2 项只有在用户明确确认策划稿后才能标记为 completed。
 - 每完成一个步骤，必须立即调用 `write_todos` 更新状态，不要等到最后统一更新。
@@ -56,10 +60,12 @@ allowed-tools:
 **任务**：根据用户主题生成完整策划稿，先写入 workspace 根目录，再调用 `request_story_plan_review` 以 Markdown 卡片形式在前端 HITL 中供用户确认。
 
 **文件要求**：
+
 - 文件名固定为：`绘本故事策划稿.md`
 - 文件位置固定为：workspace 根目录
 
 **执行要求**：
+
 - 首次进入流程时，先调用 `write_todos` 创建 6 项 Todo。
 - 然后调用 `write_file` 将完整策划稿写入 workspace 根目录的 `绘本故事策划稿.md`。
 - 写入完成后，立即调用 `request_story_plan_review`，将 `filePath`、`title`、`markdownContent` 传给前端 HITL 进行 Markdown 卡片确认。
@@ -67,12 +73,14 @@ allowed-tools:
 - 若 `request_story_plan_review` 返回的 `markdownContent` 与文件当前内容不同，必须立即调用 `edit_file` 回写 `绘本故事策划稿.md`。
 - 只有在用户通过 HITL 明确确认策划稿后，才能继续后续步骤。
 - 未获得用户明确确认前，禁止生成角色图、分镜图、音频。
+- `**request_story_plan_review` 返回后的同一轮**：不要向聊天区输出任何「再次确认策划稿」类内容（见上文规则 8）；应直接执行 `write_todos` 与步骤 3 的 `generate_image`。
 
 ### 步骤 2：确认策划稿并固定 4 个角色
 
 **任务**：在用户确认策划稿后，从策划稿中的“故事角色”章节提取并固定 4 个角色。
 
 **执行要求**：
+
 - 如果主角不足 4 个，补齐功能性角色，例如旁白伙伴、路人朋友、道具精灵，但必须与故事世界观一致。
 - 四个角色一旦确定，在整个流程中不允许随意替换。
 - 固定槽位如下：
@@ -87,6 +95,7 @@ allowed-tools:
 **任务**：基于已确认策划稿中的角色描述，先生成四宫格角色设定图，再拆分为 4 张单角色参考图。
 
 **输出**：
+
 - `images/character_sheet_4grid.png`
 - `images/character_slot1.png`
 - `images/character_slot2.png`
@@ -94,6 +103,7 @@ allowed-tools:
 - `images/character_slot4.png`
 
 **工具调用要求**：
+
 - 使用 `generate_image` 生成一张 2x2 四宫格角色设定图。
 - 四宫格角色图生成完成后，必须立即调用 `split_grid_image(imagePath, outputDir)` 拆分角色图。
 - prompt 必须明确写出四个槽位和四个角色的对应关系。
@@ -105,6 +115,7 @@ allowed-tools:
 - 如果当前运行环境无法获得 4 张拆分后的角色图，必须停止后续流程并向用户明确说明能力缺口；禁止退回为直接使用整张四宫格图生成分镜。
 
 **四宫格 prompt 示例**：
+
 ```
 儿童绘本角色设定四宫格，2x2 layout，四格边界清晰不重叠。
 slot1 左上 = 角色A：...
@@ -115,6 +126,7 @@ slot4 右下 = 角色D：...
 ```
 
 **切图工具调用示例**：
+
 ```
 split_grid_image(
   imagePath: "images/character_sheet_4grid.png",
@@ -127,11 +139,13 @@ split_grid_image(
 **任务**：根据 `《绘本故事策划稿.md》` 的分镜列表，为每一页生成可执行的分镜图提示词，并逐页展示给用户确认。
 
 **分镜列表子章节顺序必须固定为**：
+
 1. 出现的角色
 2. 情节及画面描述
 3. 故事解说
 
 **执行要求**：
+
 - 逐页读取策划稿中对应分镜章节。
 - 用“出现的角色”决定本页允许注入的角色参考图。
 - 用“情节及画面描述”生成 `edit_image` 的 prompt。
@@ -140,6 +154,7 @@ split_grid_image(
 - 若用户要求修改某页 prompt，必须先改 prompt 并再次展示确认，不能直接出图。
 
 **每页 prompt 必须包含**：
+
 - 四宫格槽位与角色映射
 - 传入的参考图与角色映射
 - 本页允许出镜的角色
@@ -147,6 +162,7 @@ split_grid_image(
 - 场景动作、情绪、镜头构图、儿童绘本风格要求
 
 **每页 prompt 精简模板**：
+
 ```
 角色映射：slot1左上=...，slot2右上=...，slot3左下=...，slot4右下=...。
 参考图映射：参考图1=images/character_slotX.png 对应 ...；参考图2=...。
@@ -159,13 +175,16 @@ split_grid_image(
 **任务**：只对已确认的页面生成分镜图，并依据对应页“故事解说”生成音频。
 
 **分镜图输出**：
+
 - `images/scene_{页码}.png`
 
 **配音输出**：
+
 - `scripts/page_{页码}.txt`
 - `audio/page_{页码}.mp3`
 
 **分镜生成要求**：
+
 - `edit_image.imagePaths` 只能传入该页“出现的角色”对应的拆分角色图。
 - 不得把未出现角色对应的角色图注入到本页。
 - 不得把整张 `images/character_sheet_4grid.png` 作为唯一参考图。
@@ -174,6 +193,7 @@ split_grid_image(
 - 若重做某页，仍需先重新确认该页 prompt，再单独调用 `edit_image`。
 
 **配音生成要求**：
+
 - 当前页音频文本必须直接取自策划稿该页的“故事解说”。
 - 可以做轻微口语化润色，但不得偏离原意、不得新增剧情。
 - 若一次性生成多页音频，可使用 `batch_tool_call(tool: "generate_audio", items: [...])`。
@@ -184,6 +204,7 @@ split_grid_image(
 **任务**：在图片和音频全部生成后调用 `finalize_workflow()` 完成工作流。
 
 **要求**：
+
 - 返回最终产物摘要：页数、角色数、分镜图数量、音频数量。
 - 明确告知用户可以指定页码重做分镜图或重做音频。
 
@@ -248,6 +269,7 @@ split_grid_image(
 ```
 
 约束：
+
 - 分镜章节的子标题顺序必须始终是“出现的角色 -> 情节及画面描述 -> 故事解说”。
 - “情节及画面描述”用于分镜图生成。
 - “故事解说”用于当前页音频生成。
@@ -255,17 +277,19 @@ split_grid_image(
 
 ## 工具选择规则
 
-| 场景 | 使用工具 | 规则 |
-|---|---|---|
-| 首次写入策划稿 | `write_file` | 先写入 `绘本故事策划稿.md` |
-| 策划稿确认 | `request_story_plan_review` | 触发 Markdown HITL 确认；若用户编辑则回写文件 |
-| 修改已存在策划稿 | `edit_file` | 用户提出修改意见后更新现有 Markdown 文件 |
-| 创建或更新 Todo | `write_todos` | 对话开始即创建；每步完成后立即更新 |
-| 生成四宫格角色图 | `generate_image` | 只生成一张基准角色设定图 |
-| 拆分四宫格角色图 | `split_grid_image` | 将四宫格切分为 4 张单角色参考图 |
-| 逐页生成分镜图 | `edit_image` / `batch_tool_call` | 仅限已确认页面，且必须使用拆分后的角色参考图 |
-| 生成配音 | `generate_audio` / `batch_tool_call` | 文本必须来自策划稿该页“故事解说” |
-| 收尾 | `finalize_workflow` | 全部素材完成后调用 |
+
+| 场景         | 使用工具                                 | 规则                             |
+| ---------- | ------------------------------------ | ------------------------------ |
+| 首次写入策划稿    | `write_file`                         | 先写入 `绘本故事策划稿.md`               |
+| 策划稿确认      | `request_story_plan_review`          | 触发 Markdown HITL 确认；若用户编辑则回写文件 |
+| 修改已存在策划稿   | `edit_file`                          | 用户提出修改意见后更新现有 Markdown 文件      |
+| 创建或更新 Todo | `write_todos`                        | 对话开始即创建；每步完成后立即更新              |
+| 生成四宫格角色图   | `generate_image`                     | 只生成一张基准角色设定图                   |
+| 拆分四宫格角色图   | `split_grid_image`                   | 将四宫格切分为 4 张单角色参考图              |
+| 逐页生成分镜图    | `edit_image` / `batch_tool_call`     | 仅限已确认页面，且必须使用拆分后的角色参考图         |
+| 生成配音       | `generate_audio` / `batch_tool_call` | 文本必须来自策划稿该页“故事解说”              |
+| 收尾         | `finalize_workflow`                  | 全部素材完成后调用                      |
+
 
 ## 重要约束
 
@@ -276,11 +300,14 @@ split_grid_image(
 5. 每页分镜 prompt 必须先经用户确认，再允许调用出图工具。
 6. 每页音频文本必须来自策划稿该页“故事解说”，禁止从图片反推。
 7. 若用户只要求修改某一页，应只重做该页对应的 prompt、分镜图或音频，不要从头重跑整个流程。
+8. HITL 已确认策划稿后，聊天区不得再出现「二次确认」类文案或 Markdown 复选框清单；须直接走工具（见上文规则 8）。
 
 ## 重新打开会话处理
 
 当用户重新打开已有会话时：
+
 1. 先读取现有 todo 列表和完成状态。
 2. 读取 workspace 根目录中的 `绘本故事策划稿.md`。
 3. 根据当前会话产物判断四宫格角色图、拆分角色图、各页分镜图、各页音频是否已生成。
 4. 若用户指定从某一步继续，只执行该步及之后需要重做的部分，不要重复生成已确认且无需变更的内容。
+

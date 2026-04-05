@@ -2,7 +2,7 @@
 
 ## 概述
 
-后端运行于 Electron **主进程**（Main Process），采用**领域驱动设计（DDD）**分层架构，负责智能体编排、AI 服务调用、会话管理、文件系统操作和配置管理。与渲染进程**仅通过 IPC 通信，无独立 HTTP 服务**。
+后端运行于 Electron **主进程**（Main Process），采用**领域驱动设计（DDD）分层架构，负责智能体编排、AI 服务调用、会话管理、文件系统操作和配置管理。与渲染进程仅通过 IPC 通信，无独立 HTTP 服务**。
 
 ---
 
@@ -29,6 +29,8 @@ flowchart LR
     style SVC fill:#fff8e1
     style IPC fill:#f3e5f5
 ```
+
+
 
 依赖方向：`domain ← application ← infrastructure ← services ← electron/ipc`
 
@@ -177,6 +179,8 @@ flowchart TD
     TR --> DA
 ```
 
+
+
 - 读取 `backend/config/skills/index.yaml`，将 `caseId` 路由到 `backend/config/skills/<skill_name>/`
 - 从 `config.yaml` 加载 tools / sub_agents / ui / runtime 配置，从 `SKILL.md` 加载主提示词
 - 按 `tools` 段调用 `registry.createTool(name, config, context)`，注入 HITL、MultimodalPort、FilesystemBackend
@@ -228,13 +232,17 @@ flowchart LR
     AC --> 适配器
 ```
 
-| 能力 | 端口类型 | DashScope 实现 | Zhipu 实现 |
-|---|---|---|---|
-| LLM | `createLLMFromAIConfig()` | qwen-plus 系列 | GLM-4.x |
-| T2I | `AsyncInferencePort`（submit+poll） | wan2.6-t2i | glm-image |
-| ImageEdit | `SyncInferencePort` | wan2.6 图像编辑 | glm-image edit |
-| TTS | `SyncInferencePort` | qwen-tts（audioUrl） | glm-tts（PCM→MP3） |
-| VL | `SyncInferencePort` | 通义千问-VL | GLM-4V |
+
+
+
+| 能力        | 端口类型                              | DashScope 实现       | Zhipu 实现         |
+| --------- | --------------------------------- | ------------------ | ---------------- |
+| LLM       | `createLLMFromAIConfig()`         | qwen-plus 系列       | GLM-4.x          |
+| T2I       | `AsyncInferencePort`（submit+poll） | wan2.6-t2i         | glm-image        |
+| ImageEdit | `SyncInferencePort`               | wan2.6 图像编辑        | glm-image edit   |
+| TTS       | `SyncInferencePort`               | qwen-tts（audioUrl） | glm-tts（PCM→MP3） |
+| VL        | `SyncInferencePort`               | 通义千问-VL            | GLM-4V           |
+
 
 ### 5. Tools 与 Registry（`backend/tools/`）
 
@@ -250,16 +258,18 @@ interface ToolContext {
 }
 ```
 
-| 工具名 | 文件 | 说明 |
-|---|---|---|
-| `generate_image` | `generate-image.ts` | 文生图（T2I），HITL 确认后调用 `MultimodalPort.generateImage()` |
-| `edit_image` | `edit-image.ts` | 图片编辑，调用 `MultimodalPort.editImage()` |
-| `generate_audio` | `generate-audio.ts` + `batch-tool-wrapper.ts` | 音频生成，批量场景通过 `batch_tool_call` 推送 `BatchProgress` |
-| `generate_script_from_image` | `generate-script-from-image.ts` | 以图生台词+坐标（VL），HITL 确认 |
-| `annotate_image_with_numbers` | `annotate-image-with-numbers.ts` | 在图片上标注序号，HITL 确认位置 |
-| `delete_artifacts` | `delete-artifacts.ts` | 删除 session 下指定产物，HITL 确认 |
-| `finalize_workflow` | `finalize-workflow.ts` | 检查图片/音频/台词完整性，广播完成事件 |
-| `line_numbers` | `line-numbers.ts` | 台词行号分配（`readLineNumbers`） |
+
+| 工具名                           | 文件                                            | 说明                                                   |
+| ----------------------------- | --------------------------------------------- | ---------------------------------------------------- |
+| `generate_image`              | `generate-image.ts`                           | 文生图（T2I），HITL 确认后调用 `MultimodalPort.generateImage()` |
+| `edit_image`                  | `edit-image.ts`                               | 图片编辑，调用 `MultimodalPort.editImage()`                 |
+| `generate_audio`              | `generate-audio.ts` + `batch-tool-wrapper.ts` | 音频生成，批量场景通过 `batch_tool_call` 推送 `BatchProgress`     |
+| `generate_script_from_image`  | `generate-script-from-image.ts`               | 以图生台词+坐标（VL），HITL 确认                                 |
+| `annotate_image_with_numbers` | `annotate-image-with-numbers.ts`              | 在图片上标注序号，HITL 确认位置                                   |
+| `delete_artifacts`            | `delete-artifacts.ts`                         | 删除 session 下指定产物，HITL 确认                             |
+| `finalize_workflow`           | `finalize-workflow.ts`                        | 检查图片/音频/台词完整性，广播完成事件                                 |
+| `line_numbers`                | `line-numbers.ts`                             | 台词行号分配（`readLineNumbers`）                            |
+
 
 **批量工具**（`batch-tool-wrapper.ts`）：统一包装单步工具，通过 `RunContext.onBatchProgress` 向前端推送 `BatchProgress`，前端 `BatchWrapper` 组件渲染进度。
 
@@ -282,6 +292,8 @@ sequenceDiagram
     H-->>T: 返回 merged payload（或 rejected 异常）
 ```
 
+
+
 HITL 动作类型：`ai.text2image` / `ai.text2speech` / `ai.vl_script` / `ai.image_label_order` / `artifacts.delete`
 
 用户取消时工具抛 `cancelled by user` 异常，当前 run 结束；下次发消息时从 LangGraph checkpoint 恢复。
@@ -290,13 +302,15 @@ HITL 动作类型：`ai.text2image` / `ai.text2speech` / `ai.vl_script` / `ai.im
 
 每次对话对应一个 **Session**（聚合根）：
 
-| 层 | 组件 | 职责 |
-|---|---|---|
-| domain | `Session` 实体 / `SessionMeta` 值对象 | 结构定义 |
-| domain | `SessionRepository` 接口 | CRUD 契约 |
-| infrastructure | `SessionFsRepository` | 以 JSON 文件实现仓储 |
-| application | `create/list/get/update/delete-session-use-case` | 用例编排 |
-| services | `WorkspaceFilesystem` | 路径安全校验，防止路径穿越 |
+
+| 层              | 组件                                               | 职责            |
+| -------------- | ------------------------------------------------ | ------------- |
+| domain         | `Session` 实体 / `SessionMeta` 值对象                 | 结构定义          |
+| domain         | `SessionRepository` 接口                           | CRUD 契约       |
+| infrastructure | `SessionFsRepository`                            | 以 JSON 文件实现仓储 |
+| application    | `create/list/get/update/delete-session-use-case` | 用例编排          |
+| services       | `WorkspaceFilesystem`                            | 路径安全校验，防止路径穿越 |
+
 
 工作区目录结构：
 
@@ -354,6 +368,8 @@ flowchart TD
     IN --> S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> OUT
 ```
 
+
+
 > 每个关键步骤内置 HITL 确认门，用户可审批/修改后继续，或取消后从 checkpoint 恢复重试。
 
 ---
@@ -380,15 +396,19 @@ flowchart TD
     MAIN --> TOOL
 ```
 
-| 配置文件 | 作用 |
-|---|---|
-| `userData/config.json` | API Key、provider、model、outputPath 等用户持久化设置 |
-| `backend/config/ai_models.json` | 各 provider 下 llm / vl / tts / t2i 的 endpoint、model、taskEndpoint |
-| `backend/config/skills/index.yaml` | `caseId` 到 `skill_name` 的路由索引 |
-| `backend/config/skills/*/config.yaml` | 主 Agent 运行时定义：tools 段（含 config_path）、sub_agents 段、ui、runtime |
-| `backend/config/skills/*/SKILL.md` | 主 Agent 提示词正文与 deepagents skill 元数据 |
-| `backend/config/tools/*.yaml` | 工具业务参数（negativePrompt、voice、size 等） |
-| `backend/config/sub_agents/*.yaml` | 子代理提示词与配置 |
+
+
+
+| 配置文件                                  | 作用                                                              |
+| ------------------------------------- | --------------------------------------------------------------- |
+| `userData/config.json`                | API Key、provider、model、outputPath 等用户持久化设置                      |
+| `backend/config/ai_models.json`       | 各 provider 下 llm / vl / tts / t2i 的 endpoint、model、taskEndpoint |
+| `backend/config/skills/index.yaml`    | `caseId` 到 `skill_name` 的路由索引                                   |
+| `backend/config/skills/*/config.yaml` | 主 Agent 运行时定义：tools 段（含 config_path）、sub_agents 段、ui、runtime    |
+| `backend/config/skills/*/SKILL.md`    | 主 Agent 提示词正文与 deepagents skill 元数据                             |
+| `backend/config/tools/*.yaml`         | 工具业务参数（negativePrompt、voice、size 等）                             |
+| `backend/config/sub_agents/*.yaml`    | 子代理提示词与配置                                                       |
+
 
 ---
 
@@ -396,27 +416,31 @@ flowchart TD
 
 > 详见 [ipc.md](./ipc.md)。
 
-| 前缀 | 通道 | 说明 |
-|---|---|---|
-| `session:` | create / list / get / update / delete | 会话生命周期 |
-| `agent:` | sendMessage（流式）、stopStream、quotaExceeded（推送） | 智能体执行 |
-| `config:` | get / set / getAiModels / getWorkspaceDir / openConfigDir / showOutputPathDialog / openFolder | 应用配置 |
-| `fs:` | ls / readFile / getFilePath / glob / grep | 工作区文件系统 |
-| `hitl:` | respond / getPendingRequests / cancel | 人工审批 |
-| `sync:` | audioToStore | 音频同步 |
-| `storage:` | getHistory / saveHistory / getBook / saveBook | 历史/绘本持久化 |
+
+| 前缀         | 通道                                                                                            | 说明       |
+| ---------- | --------------------------------------------------------------------------------------------- | -------- |
+| `session:` | create / list / get / update / delete                                                         | 会话生命周期   |
+| `agent:`   | sendMessage（流式）、stopStream、quotaExceeded（推送）                                                  | 智能体执行    |
+| `config:`  | get / set / getAiModels / getWorkspaceDir / openConfigDir / showOutputPathDialog / openFolder | 应用配置     |
+| `fs:`      | ls / readFile / getFilePath / glob / grep                                                     | 工作区文件系统  |
+| `hitl:`    | respond / getPendingRequests / cancel                                                         | 人工审批     |
+| `sync:`    | audioToStore                                                                                  | 音频同步     |
+| `storage:` | getHistory / saveHistory / getBook / saveBook                                                 | 历史/绘本持久化 |
+
 
 ---
 
 ## 链路追踪与日志
 
-| 类型 | 方式 | 输出 |
-|---|---|---|
-| LLM 调用 | LangChain 自动上报（`LANGCHAIN_TRACING_V2`） | LangSmith |
-| 多模态调用 | `traceAiRun`（`langsmith-trace.ts`）包裹 MultimodalPortImpl | LangSmith |
-| Agent 工具调用 | LangSmith trace | LangSmith |
-| 系统事件 | `logManager.logSystem()` | `workspaces/{id}/llm_logs/` |
-| 错误/警告 | `console.error` / `console.warn` | 控制台 |
+
+| 类型         | 方式                                                      | 输出                          |
+| ---------- | ------------------------------------------------------- | --------------------------- |
+| LLM 调用     | LangChain 自动上报（`LANGCHAIN_TRACING_V2`）                  | LangSmith                   |
+| 多模态调用      | `traceAiRun`（`langsmith-trace.ts`）包裹 MultimodalPortImpl | LangSmith                   |
+| Agent 工具调用 | LangSmith trace                                         | LangSmith                   |
+| 系统事件       | `logManager.logSystem()`                                | `workspaces/{id}/llm_logs/` |
+| 错误/警告      | `console.error` / `console.warn`                        | 控制台                         |
+
 
 ---
 
@@ -457,3 +481,4 @@ flowchart TD
 4. **多提供商抽象**：AI 能力通过 `MultimodalPort` 屏蔽提供商差异，运行时注入
 5. **HITL 支持**：关键步骤可配置人工审批门，结合 checkpoint 支持随时暂停/恢复
 6. **可观测性**：LangSmith 追踪 + `llm_logs/` 全量日志，支持问题复现
+

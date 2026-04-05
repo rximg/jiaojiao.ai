@@ -56,6 +56,8 @@ flowchart TD
     AD_ZIT --> ZIT
 ```
 
+
+
 ---
 
 ## 目录结构
@@ -87,15 +89,17 @@ deploy/jiaojiao-gateway/
 
 ## 路由表
 
-| 路径 | 方法 | 后端 | 能力 |
-|---|---|---|---|
-| `/compatible-mode/v1/chat/completions` | POST | DashScope | VL 视觉语言，支持 SSE 流式 |
-| `/api/v1/services/aigc/multimodal-generation/generation` | POST | DashScope | TTS 语音合成 |
-| `/api/v1/services/aigc/image-generation/generation` | POST | `T2I_BACKEND` 决定 | T2I 文生图（`z-image-turbo` 或 `dashscope`） |
-| `/api/v1/services/aigc/image-generation/image-edit` | POST | Z-Image-Turbo | 图像编辑（img2img） |
-| `/api/v1/tasks/{task_id}` | GET | 按前缀路由 | `zt_*` → Z-Image-Turbo；其余 → DashScope |
-| `/z-image-turbo/images/{filename}` | GET | 网关代理到 Z-Image-Turbo | 图片公开下载（无鉴权） |
-| `/health` | GET | 网关自身 | 健康检查，返回 `{status, port}` |
+
+| 路径                                                       | 方法   | 后端                  | 能力                                     |
+| -------------------------------------------------------- | ---- | ------------------- | -------------------------------------- |
+| `/compatible-mode/v1/chat/completions`                   | POST | DashScope           | VL 视觉语言，支持 SSE 流式                      |
+| `/api/v1/services/aigc/multimodal-generation/generation` | POST | DashScope           | TTS 语音合成                               |
+| `/api/v1/services/aigc/image-generation/generation`      | POST | `T2I_BACKEND` 决定    | T2I 文生图（`z-image-turbo` 或 `dashscope`） |
+| `/api/v1/services/aigc/image-generation/image-edit`      | POST | Z-Image-Turbo       | 图像编辑（img2img）                          |
+| `/api/v1/tasks/{task_id}`                                | GET  | 按前缀路由               | `zt_*` → Z-Image-Turbo；其余 → DashScope  |
+| `/z-image-turbo/images/{filename}`                       | GET  | 网关代理到 Z-Image-Turbo | 图片公开下载（无鉴权）                            |
+| `/health`                                                | GET  | 网关自身                | 健康检查，返回 `{status, port}`               |
+
 
 ---
 
@@ -117,6 +121,8 @@ sequenceDiagram
         G-->>E: 转发响应
     end
 ```
+
+
 
 - 客户端（Electron）只需持有 `JIAOJIAO_SK`，不接触 DashScope API Key
 - 转发时网关剥除客户端的 `Authorization` 头，改注入 `ApiKey <DASHSCOPE_API_KEY>`
@@ -140,6 +146,8 @@ flowchart LR
         GW2 -->|"strip zt_ → GET /tasks/abc123"| ZIT2["Z-Image-Turbo"]
     end
 ```
+
+
 
 Z-Image-Turbo 的 `task_id` 前加 `zt_` 返回给调用方，轮询时网关识别前缀并 strip 后转发，实现**无状态路由**。
 
@@ -167,6 +175,8 @@ classDiagram
     BackendAdapter <|-- ZImageTurboAdapter
 ```
 
+
+
 - 所有适配器使用 `httpx.AsyncClient`（timeout=300s）发起异步 HTTP 请求
 - 新增上游后端只需继承 `BackendAdapter` 并在对应路由注入即可
 
@@ -176,13 +186,15 @@ classDiagram
 
 `z-image-turbo/` 是独立的本地 GPU 推理微服务，实现与 DashScope T2I / image-edit 兼容的异步任务 API：
 
-| 端点 | 说明 |
-|---|---|
-| `POST /api/v1/services/aigc/image-generation/generation` | 文生图，返回 `{output: {task_id}}` |
+
+| 端点                                                       | 说明                            |
+| -------------------------------------------------------- | ----------------------------- |
+| `POST /api/v1/services/aigc/image-generation/generation` | 文生图，返回 `{output: {task_id}}`  |
 | `POST /api/v1/services/aigc/image-generation/image-edit` | 图像编辑，返回 `{output: {task_id}}` |
-| `GET /api/v1/tasks/{task_id}` | 轮询任务状态 |
-| `GET /images/{filename}` | 静态文件服务（生成图片） |
-| `GET /health` | 健康检查 |
+| `GET /api/v1/tasks/{task_id}`                            | 轮询任务状态                        |
+| `GET /images/{filename}`                                 | 静态文件服务（生成图片）                  |
+| `GET /health`                                            | 健康检查                          |
+
 
 - 使用 `ZImagePipeline`（modelscope ≥ 1.22 或 diffusers 回退），支持 bfloat16 + NVIDIA GPU
 - 推理用 `threading.Lock` 串行化，同一时刻只允许一次 GPU 推理
@@ -192,16 +204,18 @@ classDiagram
 
 ## 配置与环境变量
 
-| 变量 | 默认值 | 说明 |
-|---|---|---|
-| `JIAOJIAO_SK` | `jjtk-20260306-default` | 网关鉴权密钥（客户端使用） |
-| `DASHSCOPE_API_KEY` | —（必填） | DashScope 上游 API Key |
-| `DASHSCOPE_BASE_URL` | `https://dashscope.aliyuncs.com` | DashScope 上游基址 |
-| `Z_IMAGE_TURBO_URL` | `http://z-image-turbo:8998` | Z-Image-Turbo 服务地址 |
-| `Z_IMAGE_PUBLIC_URL` | `http://localhost:9021/z-image-turbo` | 返回给客户端的图片 URL 前缀 |
-| `T2I_BACKEND` | `z-image-turbo` | T2I 路由后端（`z-image-turbo`/`dashscope`） |
-| `PORT` | `9021` | 网关监听端口 |
-| `MODEL_PATH` | `/mnt/models/z-image-turbo` | GPU 模型权重挂载路径（宿主机） |
+
+| 变量                   | 默认值                                   | 说明                                    |
+| -------------------- | ------------------------------------- | ------------------------------------- |
+| `JIAOJIAO_SK`        | `jjtk-20260306-default`               | 网关鉴权密钥（客户端使用）                         |
+| `DASHSCOPE_API_KEY`  | —（必填）                                 | DashScope 上游 API Key                  |
+| `DASHSCOPE_BASE_URL` | `https://dashscope.aliyuncs.com`      | DashScope 上游基址                        |
+| `Z_IMAGE_TURBO_URL`  | `http://z-image-turbo:8998`           | Z-Image-Turbo 服务地址                    |
+| `Z_IMAGE_PUBLIC_URL` | `http://localhost:9021/z-image-turbo` | 返回给客户端的图片 URL 前缀                      |
+| `T2I_BACKEND`        | `z-image-turbo`                       | T2I 路由后端（`z-image-turbo`/`dashscope`） |
+| `PORT`               | `9021`                                | 网关监听端口                                |
+| `MODEL_PATH`         | `/mnt/models/z-image-turbo`           | GPU 模型权重挂载路径（宿主机）                     |
+
 
 > `JIAOJIAO_SK` 的默认值与 `backend/config/ai_models.json` 中 `jiaojiao.defaultApiKey` 保持一致，便于开发环境零配置启动。
 
@@ -227,6 +241,8 @@ flowchart TD
     INET["互联网"] -->|9021| HOSTport
 ```
 
+
+
 - `z-image-turbo` 端口不对外暴露，仅供网关内网访问
 - GPU 模型通过只读 bind mount 挂载，容器无写权限
 - 网关通过 `healthcheck`（`/health`）进行健康探测
@@ -244,15 +260,15 @@ flowchart TD
 docker ps --filter name=z-image-turbo
 ```
 
-2. 检查网关健康：
+1. 检查网关健康：
 
 ```bash
 curl http://localhost:9021/health
 ```
 
-3. 如果 `z-image-turbo` 仍是 `starting`，请等待；不要立刻跑测试，否则容易出现超时或 5xx。
+1. 如果 `z-image-turbo` 仍是 `starting`，请等待；不要立刻跑测试，否则容易出现超时或 5xx。
+2. 必要时调高预热相关参数：
 
-4. 必要时调高预热相关参数：
 `WARMUP_ON_START`、`WARMUP_SIZE`、`WARMUP_STEPS`。
 
 ---
@@ -274,3 +290,4 @@ curl http://localhost:9021/health
 ```
 
 > **本地开发**：在 `hosts` 文件中添加 `127.0.0.1  jiaojiao.ai`，即可通过 `http://jiaojiao.ai:9021` 访问，与 `ai_models.json` 中的 `baseUrl` 一致。
+
