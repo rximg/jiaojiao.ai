@@ -17,6 +17,7 @@ CLAUDE.md
 # IDE
 .vscode/
 .idea/
+.cursor/
 *.swp
 *.swo
 
@@ -46,5 +47,3 @@ findings.md
 task_plan.md
 progress.md
 build/*
-.cursor/*
-.cursor/skills/*
