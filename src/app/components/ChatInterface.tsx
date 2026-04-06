@@ -374,17 +374,7 @@ export default function ChatInterface({
             )}
           </div>
 
-          {/* 快捷选项：等待确认时显示 [继续][取消]，否则欢迎页显示 config 选项 */}
-          {waitingForConfirmation && (
-            <div className="px-6 pb-2 flex flex-wrap gap-2">
-              <Button variant="default" size="sm" onClick={() => handleHitlContinue()} className="rounded-full">
-                继续执行
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => handleHitlCancel()} className="rounded-full border-border">
-                取消执行
-              </Button>
-            </div>
-          )}
+          {/* 等待 HITL 时仅在消息区 HitlConfirmBlock 内展示操作按钮（与 confirmText/cancelText 一致），避免与输入区上方重复 */}
           {showWelcome && messages.length === 0 && !waitingForConfirmation && (
             <div className="px-6 pb-2">
               <QuickOptions onOptionClick={handleQuickOptionClick} />

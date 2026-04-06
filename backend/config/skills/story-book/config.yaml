@@ -1,11 +1,11 @@
 name: story_book_agent
 version: 2.0.0
-description: 绘本故事生成系统 - 先生成并确认《绘本故事策划稿.md》，再生成固定四角色角色图、逐页确认分镜并完成配音
+description: 绘本故事生成系统 - 先生成并确认《绘本方案.md》，再直接按方案生成角色图、分镜图与配音
 
 case:
   id: story_book
   title: 绘本故事
-  description: 先确认策划稿，再生成固定四角色绘本与逐页分镜配音
+  description: 先确认单一绘本方案，再直接生成角色图、分镜图与配音
   order: 2
   cover: 绘本宣传海报生成.jpg
 
@@ -47,7 +47,7 @@ sub_agents: {}
 ui:
   welcome:
     title: 欢迎使用绘本故事生成助手
-    subtitle: 我会先生成《绘本故事策划稿.md》供您确认，再生成角色图、分镜图和配音
+    subtitle: 我会先生成《绘本方案.md》供您确认，确认后直接按方案生成角色图、分镜图和配音
     instructions:
       title: 请告诉我
       items:
