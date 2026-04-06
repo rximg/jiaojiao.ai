@@ -26,7 +26,6 @@ runtime:
       enabled: false
 
 tools:
-  finalize_workflow: {}
   annotate_image_with_numbers: {}
   delete_artifacts: {}
   request_story_plan_review: {}
