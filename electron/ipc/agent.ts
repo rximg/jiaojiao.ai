@@ -108,8 +108,8 @@ async function sendAgentMessage(
       onStepResult: (newThreadId: string, messageId: string, stepResults: any[]) => {
         mainWindow.webContents.send('agent:stepResult', { threadId: newThreadId, messageId, stepResults });
       },
-      onToolCall: (newThreadId: string, toolCalls: any[]) => {
-        mainWindow.webContents.send('agent:toolCall', { threadId: newThreadId, toolCalls });
+      onToolCall: (newThreadId: string, messageId: string | undefined, toolCalls: any[]) => {
+        mainWindow.webContents.send('agent:toolCall', { threadId: newThreadId, messageId, toolCalls });
       },
       onTtsProgress: (newThreadId: string, messageId: string | undefined, toolCallId: string | undefined, current: number, total: number, path: string) => {
         mainWindow.webContents.send('agent:ttsProgress', { threadId: newThreadId, messageId, toolCallId, current, total, path });

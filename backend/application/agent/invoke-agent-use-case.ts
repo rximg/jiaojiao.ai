@@ -12,7 +12,7 @@ export type StepResult =
 export interface InvokeAgentUseCaseCallbacks {
   onMessage: (threadId: string, messages: Array<{ id: string; role: string; content: string; stepResults?: StepResult[] }>) => void;
   onStepResult?: (threadId: string, messageId: string, stepResults: StepResult[]) => void;
-  onToolCall?: (threadId: string, toolCalls: any[]) => void;
+  onToolCall?: (threadId: string, messageId: string | undefined, toolCalls: any[]) => void;
   /** TTS 每完成一个文件时推送，用于前端显示「已生成 x/n 份文件」 */
   onTtsProgress?: (threadId: string, messageId: string | undefined, toolCallId: string | undefined, current: number, total: number, path: string) => void;
   /** 统一批量进度回调，覆盖所有批量工具（generate_images, edit_images, generate_audio 等） */
@@ -277,7 +277,7 @@ export async function invokeAgentUseCase(
       const ttsCall = toolCalls.find((tc: any) => tc.name === 'batch_tool_call' || tc.name === 'generate_audio');
       runCtx.toolCallId = ttsCall?.id ?? toolCalls[0]?.id;
       if (callbacks.onToolCall) {
-        callbacks.onToolCall(effectiveSessionId, toolCalls);
+        callbacks.onToolCall(effectiveSessionId, runCtx.messageId, toolCalls);
       }
     }
 

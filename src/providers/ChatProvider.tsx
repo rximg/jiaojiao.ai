@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import type { Message, TodoItem, StepResult, BatchProgress } from '../types/types';
-import { isRenderableMessage, sanitizeMessages } from '../lib/chat-messages';
+import { isRenderableMessage, mergeToolCallsIntoMessages, sanitizeMessages } from '../lib/chat-messages';
 
 interface AgentErrorState {
   message: string;
@@ -215,9 +215,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       );
     };
 
-    const handleToolCall = (data: any) => {
-      // 工具调用事件（保留用于其他用途）
+    const handleToolCall = (data: { threadId: string; messageId?: string; toolCalls: Message['toolCalls'] }) => {
+      if (data.threadId !== currentSessionId || !data.toolCalls || data.toolCalls.length === 0) {
+        return;
+      }
+
       console.log('[ChatProvider] Tool called:', data);
+
+      setMessages((prev) => {
+        const updated = sanitizeMessages(
+          mergeToolCallsIntoMessages(prev, data.messageId, data.toolCalls)
+        );
+        allMessagesRef.current = updated;
+        return updated;
+      });
     };
 
     const handleTtsProgress = (data: { threadId: string; messageId?: string; toolCallId?: string; current: number; total: number; path: string }) => {

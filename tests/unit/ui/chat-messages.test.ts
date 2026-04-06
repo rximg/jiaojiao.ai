@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Message } from '../../../src/types/types';
-import { isRenderableMessage, sanitizeMessages } from '../../../src/lib/chat-messages';
+import {
+  isRenderableMessage,
+  mergeToolCallsIntoMessages,
+  sanitizeMessages,
+} from '../../../src/lib/chat-messages';
 
 function createAssistantMessage(overrides: Partial<Message> = {}): Message {
   return {
@@ -55,6 +59,56 @@ describe('chat message visibility', () => {
       'user-1',
       'assistant-keep',
       'assistant-hitl',
+    ]);
+  });
+
+  it('keeps empty assistant messages that carry tool calls', () => {
+    expect(
+      isRenderableMessage(
+        createAssistantMessage({
+          toolCalls: [
+            {
+              id: 'tool-1',
+              name: 'generate_image',
+              args: { prompt: '小熊' },
+              status: 'pending',
+            },
+          ],
+        })
+      )
+    ).toBe(true);
+  });
+
+  it('merges tool calls into the matching assistant message', () => {
+    const messages: Message[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        content: '画一只小熊',
+        timestamp: new Date('2026-03-23T00:00:00.000Z'),
+      },
+      createAssistantMessage({
+        id: 'assistant-1',
+        content: '我来生成角色图。',
+      }),
+    ];
+
+    const nextMessages = mergeToolCallsIntoMessages(messages, 'assistant-1', [
+      {
+        id: 'tool-1',
+        name: 'generate_image',
+        args: { prompt: '小熊在森林里' },
+        status: 'pending',
+      },
+    ]);
+
+    expect(nextMessages.find((message) => message.id === 'assistant-1')?.toolCalls).toEqual([
+      {
+        id: 'tool-1',
+        name: 'generate_image',
+        args: { prompt: '小熊在森林里' },
+        status: 'pending',
+      },
     ]);
   });
 });
