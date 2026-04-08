@@ -188,6 +188,40 @@ describe('image-edit/dashscope adapter', () => {
     });
   });
 
+  it('limits image content items to first 3 reference images', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          output: {
+            task_id: 'task-123',
+          },
+        }),
+      } as Response);
+
+    await submitEditImageDashScope(cfg, {
+      ...input,
+      imageDataUrls: [
+        'data:image/png;base64,AAA',
+        'data:image/png;base64,BBB',
+        'data:image/png;base64,CCC',
+        'data:image/png;base64,DDD',
+      ],
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(init.body));
+    const imageItems = body.input.messages[0].content.filter((item: { image?: string }) => !!item.image);
+
+    expect(imageItems).toHaveLength(3);
+    expect(imageItems.map((item: { image: string }) => item.image)).toEqual([
+      'data:image/png;base64,AAA',
+      'data:image/png;base64,BBB',
+      'data:image/png;base64,CCC',
+    ]);
+  });
+
   it('throws when submit http response is not ok', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: false,

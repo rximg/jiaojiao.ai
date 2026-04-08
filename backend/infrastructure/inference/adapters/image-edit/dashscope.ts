@@ -67,9 +67,10 @@ function resolveEditImageModel(cfg: T2IAIConfig, input: EditImagePortInput): str
 }
 
 function buildEditImageRequest(cfg: T2IAIConfig, input: EditImagePortInput) {
+  const limitedImageDataUrls = input.imageDataUrls.slice(0, 3);
   const content = [
     { text: input.prompt },
-    ...input.imageDataUrls.map((dataUrl) => ({ image: dataUrl })),
+    ...limitedImageDataUrls.map((dataUrl) => ({ image: dataUrl })),
   ];
 
   const resolvedModel = resolveEditImageModel(cfg, input);
