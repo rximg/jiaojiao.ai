@@ -1,6 +1,8 @@
 /**
- * 通义图像编辑（wan2.6-image）适配器：异步提交 + 轮询，最终返回 imageUrl
- * 文档：docs/百炼万象2.6的图片编辑api.md
+ * DashScope 图像编辑适配器：兼容两种模式并统一返回 imageUrl。
+ * - `wan2.6-image`：保留万象异步提交 + 轮询
+ * - `qwen-image-edit-max`：同步返回，必要时从异步自动回退到同步
+ * 文档：docs/third-party-api/dashscope-api.md / docs/百炼万象2.6的图片编辑api.md
  */
 import type { T2IAIConfig } from '#backend/domain/inference/types.js';
 import { SyncInferenceBase } from '../../bases/sync-inference-base.js';
@@ -31,6 +33,11 @@ interface DashScopeEditImageResponse {
   message?: string;
 }
 
+function logEditImageDebug(stage: string, payload: Record<string, unknown>): void {
+  if (process.env.DEBUG_IMAGE_EDIT !== '1') return;
+  console.log(`[image-edit][${stage}]`, JSON.stringify(payload, null, 2));
+}
+
 function resolveEditImageEndpoint(cfg: T2IAIConfig): string {
   const trimmed = cfg.endpoint.replace(/\/$/, '');
 
@@ -48,23 +55,24 @@ function resolveEditImageEndpoint(cfg: T2IAIConfig): string {
   return trimmed;
 }
 
-export async function submitEditImageDashScope(
-  cfg: T2IAIConfig,
-  input: EditImagePortInput
-): Promise<string> {
+function resolveEditImageModel(cfg: T2IAIConfig, input: EditImagePortInput): string {
+  return (
+    input.model?.trim() ||
+    (cfg.provider === 'jiaojiao'
+      ? 'qwen-image-edit-max'
+      : cfg.model === 'wan2.6-t2i'
+        ? 'wan2.6-image'
+        : cfg.model)
+  );
+}
+
+function buildEditImageRequest(cfg: T2IAIConfig, input: EditImagePortInput) {
   const content = [
     { text: input.prompt },
     ...input.imageDataUrls.map((dataUrl) => ({ image: dataUrl })),
   ];
 
-  const resolvedModel =
-    input.model?.trim() ||
-    (cfg.provider === 'jiaojiao'
-      ? 'qwen-image-edit'
-      : cfg.model === 'wan2.6-t2i'
-        ? 'wan2.6-image'
-        : cfg.model);
-
+  const resolvedModel = resolveEditImageModel(cfg, input);
   const body = {
     model: resolvedModel,
     input: {
@@ -84,7 +92,44 @@ export async function submitEditImageDashScope(
     },
   };
 
-  const res = await fetch(resolveEditImageEndpoint(cfg), {
+  return {
+    endpoint: resolveEditImageEndpoint(cfg),
+    resolvedModel,
+    body,
+  };
+}
+
+function extractImageUrlFromResponse(data: DashScopeEditImageResponse): string | undefined {
+  return data?.output?.choices?.[0]?.message?.content?.find(
+    (item) => !!item?.image && (!item?.type || item.type === 'image')
+  )?.image;
+}
+
+function shouldUseSyncImageEdit(resolvedModel: string): boolean {
+  return /^qwen-image-edit-max(?:-|$)/.test(resolvedModel);
+}
+
+function isAsyncUnsupportedError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /does not support asynchronous calls/i.test(message);
+}
+
+export async function submitEditImageDashScope(
+  cfg: T2IAIConfig,
+  input: EditImagePortInput
+): Promise<string> {
+  const { endpoint, resolvedModel, body } = buildEditImageRequest(cfg, input);
+  logEditImageDebug('submit', {
+    provider: cfg.provider,
+    endpoint,
+    cfgModel: cfg.model,
+    inputModel: input.model,
+    resolvedModel,
+    imageCount: input.imageDataUrls.length,
+    parameters: body.parameters,
+  });
+
+  const res = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -92,6 +137,11 @@ export async function submitEditImageDashScope(
       'X-DashScope-Async': 'enable',
     },
     body: JSON.stringify(body),
+  });
+
+  logEditImageDebug('submit-response', {
+    status: res.status,
+    statusText: res.statusText,
   });
 
   if (!res.ok) {
@@ -119,6 +169,14 @@ export async function pollEditImageDashScope(
   const intervalMs = cfg.poll_interval_ms ?? DEFAULT_POLL_INTERVAL_MS;
   const maxAttempts = cfg.max_poll_attempts ?? DEFAULT_MAX_ATTEMPTS;
 
+  logEditImageDebug('poll-start', {
+    provider: cfg.provider,
+    pollUrl,
+    taskId,
+    intervalMs,
+    maxAttempts,
+  });
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
     const res = await fetch(pollUrl, {
@@ -144,9 +202,7 @@ export async function pollEditImageDashScope(
     }
 
     if (status === 'SUCCEEDED') {
-      const imageUrl = data?.output?.choices?.[0]?.message?.content?.find(
-        (item) => item?.type === 'image' && !!item.image
-      )?.image;
+      const imageUrl = extractImageUrlFromResponse(data);
       if (!imageUrl) {
         throw new Error('Edit image task succeeded but no output image URL returned');
       }
@@ -157,12 +213,80 @@ export async function pollEditImageDashScope(
   throw new Error(`Edit image task timeout after ${maxAttempts} attempts`);
 }
 
+async function callEditImageDashScopeSync(
+  cfg: T2IAIConfig,
+  input: EditImagePortInput
+): Promise<DashScopeEditImageOutput> {
+  const { endpoint, resolvedModel, body } = buildEditImageRequest(cfg, input);
+
+  logEditImageDebug('submit-sync', {
+    provider: cfg.provider,
+    endpoint,
+    cfgModel: cfg.model,
+    inputModel: input.model,
+    resolvedModel,
+    imageCount: input.imageDataUrls.length,
+    parameters: body.parameters,
+  });
+
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${cfg.apiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  logEditImageDebug('submit-sync-response', {
+    status: res.status,
+    statusText: res.statusText,
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Edit image sync call failed: ${res.status} ${res.statusText} ${text}`);
+  }
+
+  const data = (await res.json()) as DashScopeEditImageResponse;
+  logEditImageDebug('submit-sync-json', { data });
+  if (data?.code) {
+    throw new Error(`Edit image API error: ${data.code} ${data.message ?? ''}`.trim());
+  }
+
+  const imageUrl = extractImageUrlFromResponse(data);
+  if (!imageUrl) {
+    throw new Error('Edit image sync call did not return output image URL');
+  }
+
+  return { imageUrl };
+}
+
 export async function callEditImageDashScope(
   cfg: T2IAIConfig,
   input: EditImagePortInput
 ): Promise<DashScopeEditImageOutput> {
-  const taskId = await submitEditImageDashScope(cfg, input);
-  return pollEditImageDashScope(cfg, taskId);
+  const resolvedModel = resolveEditImageModel(cfg, input);
+  if (shouldUseSyncImageEdit(resolvedModel)) {
+    return callEditImageDashScopeSync(cfg, input);
+  }
+
+  try {
+    const taskId = await submitEditImageDashScope(cfg, input);
+    return pollEditImageDashScope(cfg, taskId);
+  } catch (error) {
+    if (isAsyncUnsupportedError(error)) {
+      logEditImageDebug('sync-fallback', {
+        provider: cfg.provider,
+        cfgModel: cfg.model,
+        inputModel: input.model,
+        resolvedModel,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      return callEditImageDashScopeSync(cfg, input);
+    }
+    throw error;
+  }
 }
 
 export class EditImageDashScopePort extends SyncInferenceBase<EditImagePortInput, DashScopeEditImageOutput> {

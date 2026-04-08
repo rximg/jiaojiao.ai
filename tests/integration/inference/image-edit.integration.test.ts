@@ -1,14 +1,11 @@
 /**
- * Inference 层：图片编辑适配器集成测试（DashScope / Jiaojiao qwen-image-edit）。
+ * Inference 层：图片编辑适配器集成测试（DashScope / Jiaojiao qwen-image-edit-max）。
  * 直接测试提交 + 轮询真实接口。
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import sharp from 'sharp';
 import { getAIConfig } from '../../../backend/infrastructure/inference/ai-config.js';
-import {
-  pollEditImageDashScope,
-  submitEditImageDashScope,
-} from '../../../backend/infrastructure/inference/adapters/image-edit/dashscope.ts';
+import { callEditImageDashScope } from '../../../backend/infrastructure/inference/adapters/image-edit/dashscope.ts';
 import { loadConfig } from '../../../backend/app-config';
 import type { T2IAIConfig } from '../../../backend/domain/inference/types.js';
 
@@ -53,15 +50,14 @@ describe('Inference / Image Edit (DashScope/Jiaojiao)', () => {
     if (cfg.provider !== 'dashscope' && cfg.provider !== 'jiaojiao') {
       ctx.skip();
     }
-    const model = cfg.provider === 'jiaojiao' ? 'qwen-image-edit' : 'wan2.6-image';
+    const model = cfg.provider === 'jiaojiao' ? 'qwen-image-edit-max' : (cfg.model ?? 'qwen-image-edit-max');
 
     const imageBuffer = await createMinimalTestPng();
     const imageDataUrl = `data:image/png;base64,${imageBuffer.toString('base64')}`;
 
-    let taskId = '';
     let result: { imageUrl: string };
     try {
-      taskId = await submitEditImageDashScope(cfg, {
+      result = await callEditImageDashScope(cfg, {
         model,
         prompt: '参考图颜色与构图，生成一张简洁风格的水果插画',
         imageDataUrls: [imageDataUrl],
@@ -73,10 +69,6 @@ describe('Inference / Image Edit (DashScope/Jiaojiao)', () => {
           enable_interleave: false,
         },
       });
-      if (cfg.provider === 'jiaojiao') {
-        expect(taskId.startsWith('qe_') || taskId.startsWith('qu_')).toBe(true);
-      }
-      result = await pollEditImageDashScope(cfg, taskId);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (message.includes('AccessDenied') && message.includes('does not support synchronous calls')) {
@@ -85,8 +77,6 @@ describe('Inference / Image Edit (DashScope/Jiaojiao)', () => {
       throw error;
     }
 
-    expect(typeof taskId).toBe('string');
-    expect(taskId.length).toBeGreaterThan(0);
     expect(typeof result.imageUrl).toBe('string');
     expect(result.imageUrl.startsWith('http')).toBe(true);
   }, testTimeoutMs);

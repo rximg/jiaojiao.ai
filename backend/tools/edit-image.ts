@@ -1,6 +1,7 @@
 /**
  * edit_image：图像编辑，调用 MultimodalPort。
- * 默认模型按 provider 决定：DashScope -> wan2.6-image，jiaojiao -> qwen-image-edit。
+ * 模型优先取调用参数或 `ai_models.json` 配置；DashScope 同时支持
+ * `wan2.6-image`（万象异步任务）与 `qwen-image-edit-max`（同步返回），不会互相替换。
  */
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';

@@ -78,17 +78,25 @@
             "max_poll_attempts": 60
         },
         "t2i": {
-            "default": "wan2.6-t2i",
+            "default": "qwen-image-edit-max",
             "endpoint": "https://dashscope.aliyuncs.com/api/v1/services/aigc/image-generation/generation",
             "taskEndpoint": "https://dashscope.aliyuncs.com/api/v1/tasks",
             "models": [
                 {
+                    "id": "qwen-image-edit-max",
+                    "label": "千问图像编辑（Qwen Image Edit Max，同步）"
+                },
+                {
+                    "id": "qwen-image-edit-max-2025-12-01",
+                    "label": "千问图像编辑（Qwen Image Edit Max 2025-12-01，同步）"
+                },
+                {
                     "id": "wan2.6-t2i",
-                    "label": "通义万相文生图"
+                    "label": "通义万相文生图（异步）"
                 },
                 {
                     "id": "wan2.6-image",
-                    "label": "通义万相图像编辑"
+                    "label": "通义万相图像编辑（异步）"
                 }
             ],
             "poll_interval_ms": 2000,

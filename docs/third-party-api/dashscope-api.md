@@ -61,26 +61,28 @@ curl -X POST 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
 
 ---
 
-## 2. 文生图（T2I）异步
+## 2. 图像生成与图像编辑（T2I / Image Edit）
 
-### 接口基本信息
+### 2.1 文生图（`wan2.6-t2i`）异步
+
+#### 接口基本信息
 
 | 项目 | 说明 |
 |------|------|
 | 提交地址 | `https://dashscope.aliyuncs.com/api/v1/services/aigc/image-generation/generation` |
 | 轮询地址 | `https://dashscope.aliyuncs.com/api/v1/tasks/{task_id}` |
 | 方法 | 提交 POST（需加 `X-DashScope-Async: enable`），轮询 GET |
-| 类型 | 异步任务：先提交得 task_id，再轮询取结果 |
+| 类型 | 异步任务：先提交得 `task_id`，再轮询取结果 |
 
-### 请求参数（提交）
+#### 请求参数（提交）
 
 | 参数 | 必填 | 类型 | 含义 |
 |------|------|------|------|
 | model | 是 | string | 如 `wan2.6-t2i` |
 | input | 是 | object | 含 `messages`：`[{ role: "user", content: [{ text: "描述" }] }]` |
-| parameters | 否 | object | 如 size、n 等，由业务传入 |
+| parameters | 否 | object | 如 `size`、`n` 等，由业务传入 |
 
-### 请求示例（提交）
+#### 请求示例（提交）
 
 ```bash
 curl -X POST 'https://dashscope.aliyuncs.com/api/v1/services/aigc/image-generation/generation' \
@@ -96,34 +98,76 @@ curl -X POST 'https://dashscope.aliyuncs.com/api/v1/services/aigc/image-generati
   }'
 ```
 
-### 轮询请求
+#### 轮询请求
 
 ```bash
 curl -X GET 'https://dashscope.aliyuncs.com/api/v1/tasks/{task_id}' \
   -H 'Authorization: Bearer YOUR_API_KEY'
 ```
 
-### 响应格式
+#### 响应格式
 
 - **提交成功**：HTTP 200，`{"output": {"task_id": "..."}}`。
-- **轮询成功**：`output.task_status === "SUCCEEDED"`，图片 URL 在 `output.choices[0].message.content[]` 中 `type === "image"` 的 `image` 字段。
+- **轮询成功**：`output.task_status === "SUCCEEDED"`，图片 URL 在 `output.choices[0].message.content[]` 中。
 - **轮询失败**：`output.task_status === "FAILED"`，`output.message` 为错误说明。
 
-### 响应关键字段（轮询）
-
-| 字段 | 说明 |
-|------|------|
-| output.task_status | SUCCEEDED / FAILED / 处理中 |
-| output.choices[0].message.content | 数组，项为 `{ type: "image", image: "url" }` |
-| output.message | 失败时的错误信息 |
-
-### 核心错误码
+#### 核心错误码
 
 | 情况 | 含义 |
 |------|------|
 | 提交非 2xx | 参数或鉴权错误，见 body |
-| task_status=FAILED | 任务失败，见 output.message |
-| 超时 | 轮询次数用尽仍未 SUCCEEDED |
+| task_status=FAILED | 任务失败，见 `output.message` |
+| 超时 | 轮询次数用尽仍未 `SUCCEEDED` |
+
+### 2.2 图像编辑（DashScope 双模式）
+
+本项目中的 `edit-image` **保留万象调用方式**，同时新增对 `qwen-image-edit-max` 的兼容，二者不会互相替换。
+
+| 模型 | 接口地址 | 调用方式 | 本项目行为 |
+|------|----------|----------|------------|
+| `wan2.6-image` | `https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation` | **异步**：POST + `X-DashScope-Async: enable`，再轮询 `/api/v1/tasks/{task_id}` | 保留原有万象图像编辑流程 |
+| `qwen-image-edit-max` / `qwen-image-edit-max-2025-12-01` | `https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation` | **同步**：HTTP 200 直接返回结果 | 优先按同步处理；若误走异步且被拒绝，会自动回退到同步 |
+
+#### 模型选择规则（本项目）
+
+1. 先看调用时显式传入的 `model`
+2. 若未传，则使用 `backend/config/ai_models.json` 中的 `dashscope.t2i.default`
+3. 若传入 `wan2.6-t2i` 用于图片编辑，适配器会自动映射到 `wan2.6-image`
+4. 若传入 `qwen-image-edit-max*`，适配器会按同步方式解析响应
+
+#### 同步返回示例（`qwen-image-edit-max`）
+
+```bash
+curl -X POST 'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation' \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer YOUR_API_KEY' \
+  -d '{
+    "model": "qwen-image-edit-max",
+    "input": {
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            { "text": "参考图颜色与构图，生成一张简洁风格的水果插画" },
+            { "image": "data:image/png;base64,..." }
+          ]
+        }
+      ]
+    },
+    "parameters": {
+      "size": "1280*1280",
+      "n": 1,
+      "prompt_extend": true,
+      "watermark": false,
+      "enable_interleave": false
+    }
+  }'
+```
+
+#### 同步响应关键字段
+
+- 图片 URL 位于：`output.choices[0].message.content[].image`
+- 某些响应里 **不一定带** `type: "image"`，因此解析时应以是否存在 `image` 字段为准
 
 ---
 
@@ -260,6 +304,8 @@ curl -X POST 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
 | 能力 | 默认模型 | 说明 |
 |------|----------|------|
 | LLM | qwen-plus-2025-12-01 | compatible-mode/v1 |
-| T2I | wan2.6-t2i | image-generation/generation + /api/v1/tasks |
+| T2I（文生图） | wan2.6-t2i | `image-generation/generation` + `/api/v1/tasks` |
+| ImageEdit（当前 DashScope 配置） | qwen-image-edit-max | `multimodal-generation/generation`，同步返回图片 URL |
+| ImageEdit（保留万象模式） | wan2.6-image | `multimodal-generation/generation` + `/api/v1/tasks` |
 | TTS | qwen-tts | multimodal-generation/generation（非旧 synthesis） |
 | VL | qwen3-vl-plus | compatible-mode/v1/chat/completions |

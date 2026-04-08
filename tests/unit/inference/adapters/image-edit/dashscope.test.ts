@@ -137,6 +137,57 @@ describe('image-edit/dashscope adapter', () => {
     expect(fetchMock.mock.calls[1][0]).toBe(`${cfg.taskEndpoint}/task-123`);
   });
 
+  it('falls back to sync call when async is not supported', async () => {
+    const syncImageUrl = 'https://example.com/sync-result.png';
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        text: async () =>
+          JSON.stringify({
+            code: 'AccessDenied',
+            message: 'current user api does not support asynchronous calls',
+          }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          output: {
+            choices: [
+              {
+                message: {
+                  content: [{ type: 'image', image: syncImageUrl }],
+                },
+              },
+            ],
+          },
+        }),
+      } as Response);
+
+    const result = await callEditImageDashScope(
+      { ...cfg, model: 'custom-image-edit', poll_interval_ms: 0, max_poll_attempts: 1 },
+      { ...input, model: 'custom-image-edit' }
+    );
+
+    expect(result).toEqual({ imageUrl: syncImageUrl });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const firstInit = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(firstInit.headers).toEqual({
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${cfg.apiKey}`,
+      'X-DashScope-Async': 'enable',
+    });
+
+    const secondInit = fetchMock.mock.calls[1][1] as RequestInit;
+    expect(secondInit.headers).toEqual({
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${cfg.apiKey}`,
+    });
+  });
+
   it('throws when submit http response is not ok', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: false,
