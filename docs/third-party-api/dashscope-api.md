@@ -63,6 +63,19 @@ curl -X POST 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
 
 ## 2. 图像生成与图像编辑（T2I / Image Edit）
 
+### 2.0 接口与协议族总览（重要）
+
+DashScope 的图像相关能力在本项目中按“协议族”拆分为两类：
+
+| 协议族 | 典型模型族 | 入口 | 同步/异步 | 说明 |
+|---|---|---|---|---|
+| **multimodal-generation** | `qwen-image*`、`qwen-image-edit*` | `POST https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation` | **同步** | 请求体采用 `input.messages` 结构，成功后直接返回 `output.choices[0].message.content[].image` |
+| **image-generation + tasks** | `wan2.6-t2i` | `POST https://dashscope.aliyuncs.com/api/v1/services/aigc/image-generation/generation` + `GET /api/v1/tasks/{task_id}` | **异步任务** | 提交返回 `task_id`，轮询 `/tasks/{task_id}` 获取最终图片 URL |
+
+> 注意：`qwen-image` 在官方文档中也存在 `text2image/image-synthesis` 的异步接口形态，但本项目的主路径建议优先使用 `multimodal-generation` 的同步形态，以降低任务轮询与协议分歧。
+>
+> **最终规范（不做旧入口兼容）**：`qwen-image*` 与 `qwen-image-edit*` 只允许走 `multimodal-generation/generation`；`wan2.6-t2i` 只允许走 `image-generation/generation + /tasks`。禁止在工程内提供“单入口自动分流”的兼容模式，以免协议语义再次混淆。
+
 ### 2.1 文生图（`wan2.6-t2i`）异步
 
 #### 接口基本信息
@@ -131,7 +144,7 @@ curl -X GET 'https://dashscope.aliyuncs.com/api/v1/tasks/{task_id}' \
 #### 模型选择规则（本项目）
 
 1. 先看调用时显式传入的 `model`
-2. 若未传，则使用 `backend/config/ai_models.json` 中的 `dashscope.t2i.default`
+2. 若未传，则使用 `backend/config/ai_models.json` 中的 **图像编辑能力块默认模型**（目标态：`dashscope.image_edit.default`）
 3. 若传入 `wan2.6-t2i` 用于图片编辑，适配器会自动映射到 `wan2.6-image`
 4. 若传入 `qwen-image-edit-max*`，适配器会按同步方式解析响应
 
@@ -168,6 +181,46 @@ curl -X POST 'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-gen
 
 - 图片 URL 位于：`output.choices[0].message.content[].image`
 - 某些响应里 **不一定带** `type: "image"`，因此解析时应以是否存在 `image` 字段为准
+
+### 2.3 文生图（Qwen-Image 系列，同步推荐）
+
+#### 接口基本信息
+
+| 项目 | 说明 |
+|------|------|
+| 地址 | `POST https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation` |
+| 类型 | 同步返回（推荐） |
+| 模型族 | `qwen-image*`（含 `qwen-image-2.0-*` 等） |
+
+#### 请求体约束（核心）
+
+- `input.messages` 仅支持**单轮**，数组内只有一个 `role=user` 对象
+- `content` 中必须且仅包含 **1 个** `{ "text": "..." }`（不传或传多个会报错）
+
+#### 响应取图
+
+- 图片 URL 位于：`output.choices[0].message.content[].image`（URL 通常为临时链接，需及时下载/转存）
+
+### 2.4 图像编辑（Qwen-Image-Edit 系列，同步）
+
+#### 接口基本信息
+
+| 项目 | 说明 |
+|------|------|
+| 地址 | `POST https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation` |
+| 类型 | 同步返回 |
+| 模型族 | `qwen-image-edit*`（如 `qwen-image-edit-max*`） |
+
+#### 请求体约束（核心）
+
+- `input.messages` 单轮
+- `content` 必须包含：
+  - **1~3 个** `{ "image": "公网URL/oss临时URL/dataURL(base64)" }`
+  - **且仅 1 个** `{ "text": "编辑指令" }`
+
+#### 响应取图
+
+- 图片 URL 位于：`output.choices[0].message.content[].image`
 
 ---
 
