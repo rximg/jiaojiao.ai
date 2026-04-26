@@ -3,7 +3,7 @@
  */
 import type { SyncInferencePort } from '#backend/domain/inference/index.js';
 import type { AsyncInferencePort } from '#backend/domain/inference/index.js';
-import type { VLAIConfig, T2IAIConfig, TTSAIConfig } from '#backend/domain/inference/types.js';
+import type { VLAIConfig, T2IAIConfig, TTSAIConfig, ImageEditAIConfig } from '#backend/domain/inference/types.js';
 import type { VLPortInput, T2IPortInput, EditImagePortInput, TTSPortInput } from './port-types.js';
 import { VLDashScopePort } from './adapters/vl/dashscope.js';
 import { VLZhipuPort } from './adapters/vl/zhipu.js';
@@ -34,7 +34,7 @@ export function createT2IPort(cfg: T2IAIConfig): T2IPort {
   return new T2IDashScopePort(cfg);
 }
 
-export function createEditImagePort(cfg: T2IAIConfig): EditImagePort {
+export function createEditImagePort(cfg: ImageEditAIConfig): EditImagePort {
   if (cfg.provider === 'zhipu') return new EditImageZhipuPort(cfg);
   // jiaojiao 网关兼容 DashScope 协议，直接复用
   return new EditImageDashScopePort(cfg);

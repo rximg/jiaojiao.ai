@@ -7,7 +7,7 @@ import sharp from 'sharp';
 import { getAIConfig } from '../../../backend/infrastructure/inference/ai-config.js';
 import { callEditImageDashScope } from '../../../backend/infrastructure/inference/adapters/image-edit/dashscope.ts';
 import { loadConfig } from '../../../backend/app-config';
-import type { T2IAIConfig } from '../../../backend/domain/inference/types.js';
+import type { ImageEditAIConfig } from '../../../backend/domain/inference/types.js';
 
 const testProvider =
   process.env.TEST_API_PROVIDER === 'zhipu' ||
@@ -46,7 +46,7 @@ describe('Inference / Image Edit (DashScope/Jiaojiao)', () => {
   it('should return image URL from image-edit adapter', async (ctx) => {
     if (!hasKey) ctx.skip();
 
-    const cfg = (await getAIConfig('t2i')) as T2IAIConfig;
+    const cfg = (await getAIConfig('image_edit')) as ImageEditAIConfig;
     if (cfg.provider !== 'dashscope' && cfg.provider !== 'jiaojiao') {
       ctx.skip();
     }

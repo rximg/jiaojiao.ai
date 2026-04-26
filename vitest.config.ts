@@ -14,6 +14,7 @@ export default defineConfig({
     environment: 'node',
     globals: true,
     setupFiles: ['./tests/setup/env.ts'],
+    exclude: ['**/node_modules/**', '**/dist/**', '**/.worktrees/**', '**/worktrees/**'],
     testTimeout: 120_000,
     hookTimeout: 120_000,
     poolOptions: {

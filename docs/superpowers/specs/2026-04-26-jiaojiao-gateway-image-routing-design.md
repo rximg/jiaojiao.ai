@@ -24,7 +24,7 @@
 - **POST** `/api/v1/services/aigc/multimodal-generation/generation`
 - **承载模型族**：
   - 文生图：`qwen-image`*
-  - 图像编辑：`qwen-image-edit*`
+  - 图像编辑：`qwen-image-edit`*
   -（可选）TTS/VL：若网关希望进一步统一多模态能力，可继续承载，但本方案的“必须”只覆盖图像能力
 - **请求体形态**：与 DashScope 官方一致（`model` + `input.messages` + `parameters`）
 - **响应形态**：同步返回 `output.choices[0].message.content[].image`
@@ -55,7 +55,7 @@
 | 模型族             | 示例                              | 协议族                          | 对外路由                                                         |
 | --------------- | ------------------------------- | ---------------------------- | ------------------------------------------------------------ |
 | Qwen-Image      | `qwen-image`、`qwen-image-2.0-`* | multimodal（同步）               | `POST /multimodal-generation/generation`                     |
-| Qwen-Image-Edit | `qwen-image-edit-max*`          | multimodal（同步）               | `POST /multimodal-generation/generation`                     |
+| Qwen-Image-Edit | `qwen-image-edit-max`*          | multimodal（同步）               | `POST /multimodal-generation/generation`                     |
 | Wan（万相）         | `wan2.6-t2i`                    | image-generation + tasks（异步） | `POST /image-generation/generation` + `GET /tasks/{task_id}` |
 
 
@@ -91,7 +91,7 @@
 
 本方案**不提供旧入口兼容**，以最终最佳实践为准：
 
-- `qwen-image`* 与 `qwen-image-edit*` 只能通过 `POST /api/v1/services/aigc/multimodal-generation/generation` 调用
+- `qwen-image`* 与 `qwen-image-edit`* 只能通过 `POST /api/v1/services/aigc/multimodal-generation/generation` 调用
 - `wan2.6-t2i`（以及其他 task 模式模型）只能通过 `POST /api/v1/services/aigc/image-generation/generation` + `GET /api/v1/tasks/{task_id}` 调用
 - 网关不需要为历史客户端提供“单入口/自动分流/软兼容”模式，避免协议语义再次混淆
 

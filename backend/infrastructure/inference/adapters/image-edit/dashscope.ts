@@ -4,7 +4,7 @@
  * - `qwen-image-edit-max`：同步返回，必要时从异步自动回退到同步
  * 文档：docs/third-party-api/dashscope-api.md / docs/百炼万象2.6的图片编辑api.md
  */
-import type { T2IAIConfig } from '#backend/domain/inference/types.js';
+import type { ImageEditAIConfig } from '#backend/domain/inference/types.js';
 import { SyncInferenceBase } from '../../bases/sync-inference-base.js';
 import type { EditImagePortInput } from '../../port-types.js';
 
@@ -116,7 +116,7 @@ function isAsyncUnsupportedError(error: unknown): boolean {
 }
 
 export async function submitEditImageDashScope(
-  cfg: T2IAIConfig,
+  cfg: ImageEditAIConfig,
   input: EditImagePortInput
 ): Promise<string> {
   const { endpoint, resolvedModel, body } = buildEditImageRequest(cfg, input);
@@ -163,7 +163,7 @@ export async function submitEditImageDashScope(
 }
 
 export async function pollEditImageDashScope(
-  cfg: T2IAIConfig,
+  cfg: ImageEditAIConfig,
   taskId: string
 ): Promise<DashScopeEditImageOutput> {
   const pollUrl = cfg.taskEndpoint.replace(/\/$/, '') + '/' + taskId;
@@ -215,7 +215,7 @@ export async function pollEditImageDashScope(
 }
 
 async function callEditImageDashScopeSync(
-  cfg: T2IAIConfig,
+  cfg: ImageEditAIConfig,
   input: EditImagePortInput
 ): Promise<DashScopeEditImageOutput> {
   const { endpoint, resolvedModel, body } = buildEditImageRequest(cfg, input);
@@ -264,7 +264,7 @@ async function callEditImageDashScopeSync(
 }
 
 export async function callEditImageDashScope(
-  cfg: T2IAIConfig,
+  cfg: ImageEditAIConfig,
   input: EditImagePortInput
 ): Promise<DashScopeEditImageOutput> {
   const resolvedModel = resolveEditImageModel(cfg, input);
@@ -291,7 +291,7 @@ export async function callEditImageDashScope(
 }
 
 export class EditImageDashScopePort extends SyncInferenceBase<EditImagePortInput, DashScopeEditImageOutput> {
-  constructor(private readonly cfg: T2IAIConfig) {
+  constructor(private readonly cfg: ImageEditAIConfig) {
     super();
   }
 

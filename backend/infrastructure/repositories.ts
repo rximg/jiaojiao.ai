@@ -9,7 +9,7 @@ import type { SessionRepository } from '#backend/domain/session/repositories/ses
 import type { ArtifactRepository } from '#backend/domain/workspace/repositories/artifact-repository.js';
 import type { ConfigRepository } from '#backend/domain/configuration/repositories/config-repository.js';
 import type { MultimodalPort } from '#backend/domain/inference/ports/multimodal-port.js';
-import type { T2IAIConfig, TTSAIConfig, VLAIConfig } from '#backend/domain/inference/types.js';
+import type { T2IAIConfig, TTSAIConfig, VLAIConfig, ImageEditAIConfig } from '#backend/domain/inference/types.js';
 import { MultimodalPortImpl } from './inference/multimodal-port-impl.js';
 import { getAIConfig } from './inference/ai-config.js';
 import {
@@ -59,12 +59,14 @@ let _multimodalPortPromise: Promise<MultimodalPort> | null = null;
  * 创建多模态端口（使用 getAIConfig 构建，供注入或单例使用）
  */
 export async function createMultimodalPort(): Promise<MultimodalPort> {
-  const [t2iCfg, ttsCfg, vlCfg] = await Promise.all([
+  const [t2iCfg, imageEditCfg, ttsCfg, vlCfg] = await Promise.all([
     getAIConfig('t2i'),
+    getAIConfig('image_edit'),
     getAIConfig('tts'),
     getAIConfig('vl'),
   ]);
   const t2i = t2iCfg as T2IAIConfig;
+  const imageEdit = imageEditCfg as ImageEditAIConfig;
   const tts = ttsCfg as TTSAIConfig;
   const vl = vlCfg as VLAIConfig;
   const artifactRepo = getArtifactRepository();
@@ -72,10 +74,11 @@ export async function createMultimodalPort(): Promise<MultimodalPort> {
   return new MultimodalPortImpl({
     vlPort: createVLPort(vl),
     t2iPort: createT2IPort(t2i),
-    editImagePort: createEditImagePort(t2i),
+    editImagePort: createEditImagePort(imageEdit),
     ttsSyncPort: createTTSSyncPort(tts),
     vlCfg: vl,
     t2iCfg: t2i,
+    imageEditCfg: imageEdit,
     ttsCfg: tts,
     artifactRepo,
     getWorkspaceRoot: () => workspace.root,

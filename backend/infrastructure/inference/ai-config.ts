@@ -12,6 +12,7 @@ import type {
   VLAIConfig,
   TTSAIConfig,
   T2IAIConfig,
+  ImageEditAIConfig,
   AIConfig,
   AiModelsSchema,
   ProviderAbilityModelsConfig,
@@ -21,6 +22,7 @@ import type {
 /** 能力块在 ai_models.json 中可包含的 URL 与异步轮询配置 */
 interface AbilityBlockWithUrls extends ProviderAbilityModelsConfig {
   endpoint?: string;
+  legacyEndpoint?: string;
   taskEndpoint?: string;
   poll_interval_ms?: number;
   max_poll_attempts?: number;
@@ -251,14 +253,36 @@ export async function getAIConfig(ability: AIAbility): Promise<AIConfig> {
     case 't2i': {
       const endpoint = requireUrl(abilityBlock.endpoint, `${provider}.t2i.endpoint`);
       const taskEndpoint = requireUrl(abilityBlock.taskEndpoint, `${provider}.t2i.taskEndpoint`);
+      const legacyEndpoint = (abilityBlock as AbilityBlockWithUrls).legacyEndpoint?.trim()
+        ? requireUrl((abilityBlock as AbilityBlockWithUrls).legacyEndpoint, `${provider}.t2i.legacyEndpoint`)
+        : undefined;
       const poll_interval_ms = abilityBlock.poll_interval_ms;
       const max_poll_attempts = abilityBlock.max_poll_attempts;
       const cfg: T2IAIConfig = {
         provider,
         apiKey,
         endpoint,
+        ...(legacyEndpoint && { legacyEndpoint }),
         taskEndpoint,
         model,
+        ...(poll_interval_ms != null && { poll_interval_ms }),
+        ...(max_poll_attempts != null && { max_poll_attempts }),
+      };
+      return cfg;
+    }
+    case 'image_edit': {
+      const endpoint = requireUrl(abilityBlock.endpoint, `${provider}.image_edit.endpoint`);
+      const taskEndpoint = abilityBlock.taskEndpoint?.trim()
+        ? abilityBlock.taskEndpoint.replace(/\/$/, '')
+        : undefined;
+      const poll_interval_ms = abilityBlock.poll_interval_ms;
+      const max_poll_attempts = abilityBlock.max_poll_attempts;
+      const cfg: ImageEditAIConfig = {
+        provider,
+        apiKey,
+        endpoint,
+        model,
+        ...(taskEndpoint && { taskEndpoint }),
         ...(poll_interval_ms != null && { poll_interval_ms }),
         ...(max_poll_attempts != null && { max_poll_attempts }),
       };

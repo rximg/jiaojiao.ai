@@ -8,6 +8,33 @@ import type { T2IPortInput } from '../../port-types.js';
 const DEFAULT_POLL_INTERVAL_MS = 2000;
 const DEFAULT_MAX_ATTEMPTS = 60;
 
+function isQwenImageModel(model: string): boolean {
+  return /^qwen-image(?:-|$)/.test(model) || /^qwen-image-2\.0(?:-|$)/.test(model);
+}
+
+function isWanT2IModel(model: string): boolean {
+  return /^wan2\.6-t2i(?:-|$)/.test(model);
+}
+
+function encodeSyncImageUrlAsTaskId(imageUrl: string): string {
+  return `__sync_image_url__:${imageUrl}`;
+}
+
+function decodeSyncImageUrlFromTaskId(taskId: string): string | undefined {
+  if (!taskId.startsWith('__sync_image_url__:')) return undefined;
+  return taskId.slice('__sync_image_url__:'.length);
+}
+
+function extractFirstImageUrlFromContent(
+  content: Array<{ type?: string; image?: string }> | undefined
+): string | undefined {
+  if (!Array.isArray(content)) return undefined;
+  for (const item of content) {
+    if (item?.image && (!item?.type || item.type === 'image')) return item.image;
+  }
+  return undefined;
+}
+
 export async function submitTaskDashScope(
   cfg: T2IAIConfig,
   prompt: string,
@@ -20,20 +47,42 @@ export async function submitTaskDashScope(
     },
     parameters,
   };
-  const res = await fetch(cfg.endpoint, {
+  const model = cfg.model ?? '';
+  const useSyncMultimodal = isQwenImageModel(model);
+  const submitUrl =
+    !useSyncMultimodal && isWanT2IModel(model) && cfg.legacyEndpoint ? cfg.legacyEndpoint : cfg.endpoint;
+
+  const res = await fetch(submitUrl, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${cfg.apiKey}`,
-      'X-DashScope-Async': 'enable',
-    },
+    headers: useSyncMultimodal
+      ? {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${cfg.apiKey}`,
+        }
+      : {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${cfg.apiKey}`,
+          'X-DashScope-Async': 'enable',
+        },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`T2I submit failed: ${res.status} ${res.statusText} ${text}`);
   }
-  const data = (await res.json()) as { output?: { task_id?: string } };
+  const data = (await res.json()) as {
+    output?: {
+      task_id?: string;
+      choices?: Array<{ message?: { content?: Array<{ type?: string; image?: string }> } }>;
+    };
+  };
+
+  if (useSyncMultimodal) {
+    const imageUrl = extractFirstImageUrlFromContent(data?.output?.choices?.[0]?.message?.content);
+    if (!imageUrl) throw new Error('T2I sync call succeeded but no image URL in response');
+    return encodeSyncImageUrlAsTaskId(imageUrl);
+  }
+
   const taskId = data?.output?.task_id;
   if (!taskId) throw new Error('T2I submit did not return task_id');
   return taskId;
@@ -43,6 +92,9 @@ export async function pollForImageUrlDashScope(
   cfg: T2IAIConfig,
   taskId: string
 ): Promise<string> {
+  const syncImageUrl = decodeSyncImageUrlFromTaskId(taskId);
+  if (syncImageUrl) return syncImageUrl;
+
   const url = cfg.taskEndpoint.replace(/\/$/, '') + '/' + taskId;
   const intervalMs = cfg.poll_interval_ms ?? DEFAULT_POLL_INTERVAL_MS;
   const maxAttempts = cfg.max_poll_attempts ?? DEFAULT_MAX_ATTEMPTS;
@@ -66,12 +118,8 @@ export async function pollForImageUrlDashScope(
       throw new Error(`T2I task failed: ${msg}`);
     }
     if (status === 'SUCCEEDED') {
-      const content = taskData?.output?.choices?.[0]?.message?.content;
-      if (Array.isArray(content)) {
-        for (const item of content) {
-          if (item?.type === 'image' && item?.image) return item.image;
-        }
-      }
+      const imageUrl = extractFirstImageUrlFromContent(taskData?.output?.choices?.[0]?.message?.content);
+      if (imageUrl) return imageUrl;
       throw new Error('T2I task succeeded but no image URL in response');
     }
   }

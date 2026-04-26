@@ -3,7 +3,13 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { getAIConfig } from '../../../backend/infrastructure/inference/ai-config.js';
-import type { LLMAIConfig, VLAIConfig, TTSAIConfig, T2IAIConfig } from '#backend/domain/inference/types.js';
+import type {
+  LLMAIConfig,
+  VLAIConfig,
+  TTSAIConfig,
+  T2IAIConfig,
+  ImageEditAIConfig,
+} from '#backend/domain/inference/types.js';
 
 vi.mock('../../../backend/app-config.js', () => ({ loadConfig: vi.fn() }));
 
@@ -48,7 +54,14 @@ describe('Inference / getAIConfig', () => {
     const t2i = cfg as T2IAIConfig;
     expect(t2i.endpoint).toBeDefined();
     expect(t2i.taskEndpoint).toBeDefined();
-    expect(t2i.model).toBe('wan2.6-t2i');
+    expect(t2i.model).toBe('qwen-image');
+  });
+
+  it('returns Image Edit config with endpoint', async () => {
+    const cfg = await getAIConfig('image_edit');
+    const edit = cfg as ImageEditAIConfig;
+    expect(edit.endpoint).toBeDefined();
+    expect(edit.model).toBeDefined();
   });
 
   it('returns jiaojiao T2I config when TEST_API_PROVIDER is jiaojiao', async () => {

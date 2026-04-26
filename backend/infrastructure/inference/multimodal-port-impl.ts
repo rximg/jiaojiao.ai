@@ -17,6 +17,7 @@ import type {
   GenerateScriptFromImageResult,
   ScriptLine,
   T2IAIConfig,
+  ImageEditAIConfig,
   TTSAIConfig,
   VLAIConfig,
 } from '#backend/domain/inference/index.js';
@@ -37,6 +38,7 @@ export interface MultimodalPortImplDeps {
   ttsSyncPort: TTSSyncPort;
   vlCfg: VLAIConfig;
   t2iCfg: T2IAIConfig;
+  imageEditCfg: ImageEditAIConfig;
   ttsCfg: TTSAIConfig;
   artifactRepo: ArtifactRepository;
   getWorkspaceRoot: () => string;
@@ -310,7 +312,7 @@ export class MultimodalPortImpl implements MultimodalPort {
     const promptExtend = params.promptExtend ?? true;
     const watermark = params.watermark ?? false;
 
-    const cfg = this.deps.t2iCfg;
+    const cfg = this.deps.imageEditCfg;
     const inputs = {
       promptLength: promptStr.length,
       imageCount: params.imagePaths.length,

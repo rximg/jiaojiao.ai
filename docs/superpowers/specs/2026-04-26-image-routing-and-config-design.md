@@ -34,7 +34,7 @@
 
 ### 非目标（Non-goals）
 
-- 不在本阶段决定所有 Qwen-Image 具体型号（如 `qwen-image-2.0-*`）的默认选型细节，仅定义“模型族与协议族”的对齐原则。
+- 不在本阶段决定所有 Qwen-Image 具体型号（如 `qwen-image-2.0-`*）的默认选型细节，仅定义“模型族与协议族”的对齐原则。
 - 不在本阶段重构前端 UI 或 Agent 交互，仅保证工具链路可正确调用并可切换 provider。
 
 ---
@@ -51,19 +51,19 @@
 
 ## 约束与原则（必须满足）
 
-1. **Provider 只分两类**  
-   - LLM 使用 `agent.provider`
-   - 多模态（VL/TTS/T2I/ImageEdit）统一使用 `agent.multimodalProvider`
-2. **能力配置不互相污染**  
-   - 文生图默认模型/endpoint 不得被图像编辑默认模型/endpoint 影响，反之亦然。
-3. **网关对外路由清晰**  
-   - 对外暴露两条路径（A 方案）：`image-generation` 与 `multimodal-generation`。
-4. **DashScope ⇄ Gateway 可无缝切换**  
-   - App 端只需要切换 `multimodalProvider=dashscope|jiaojiao`，无需改工具或业务代码即可在接口层面一致工作。
-5. **先抽象后实现（同步/异步任务）**  
-   - 在实现任何“同步 multimodal 调用”和“异步 task 调用”之前，必须先检查当前代码库是否已有对应抽象（例如同步/异步端口基类）。  
-   - 若缺少抽象：先定义清晰的抽象基类/接口（例如 `SyncInferenceBase` / `AsyncInferenceBase` 及其统一错误处理与返回形状），再在 adapter 中继承实现具体 provider 的 HTTP 调用。  
-   - 禁止直接在业务工具或 `MultimodalPortImpl` 中堆叠 provider 分支逻辑；协议差异应被适配器层消化。
+1. **Provider 只分两类**
+  - LLM 使用 `agent.provider`
+  - 多模态（VL/TTS/T2I/ImageEdit）统一使用 `agent.multimodalProvider`
+2. **能力配置不互相污染**
+  - 文生图默认模型/endpoint 不得被图像编辑默认模型/endpoint 影响，反之亦然。
+3. **网关对外路由清晰**
+  - 对外暴露两条路径（A 方案）：`image-generation` 与 `multimodal-generation`。
+4. **DashScope ⇄ Gateway 可无缝切换**
+  - App 端只需要切换 `multimodalProvider=dashscope|jiaojiao`，无需改工具或业务代码即可在接口层面一致工作。
+5. **先抽象后实现（同步/异步任务）**
+  - 在实现任何“同步 multimodal 调用”和“异步 task 调用”之前，必须先检查当前代码库是否已有对应抽象（例如同步/异步端口基类）。  
+  - 若缺少抽象：先定义清晰的抽象基类/接口（例如 `SyncInferenceBase` / `AsyncInferenceBase` 及其统一错误处理与返回形状），再在 adapter 中继承实现具体 provider 的 HTTP 调用。  
+  - 禁止直接在业务工具或 `MultimodalPortImpl` 中堆叠 provider 分支逻辑；协议差异应被适配器层消化。
 
 ---
 
@@ -89,6 +89,8 @@ flowchart LR
   Port --- CfgEdit
 ```
 
+
+
 关键点：`MultimodalPortImpl` 不再只注入一个 `t2iCfg`，而是注入 **两份配置**：`t2iCfg` 与 `imageEditCfg`。
 
 ---
@@ -113,10 +115,10 @@ flowchart LR
 - `t2i`：
   - `endpoint`: 默认指向 **multimodal-generation/generation**（同步，Qwen-Image 系）
   - 可选提供 `legacyEndpoint`/`taskEndpoint` 组合给 `wan2.6-t2i`（若仍要在同能力内支持异步）
-  - `default`: `qwen-image*`
+  - `default`: `qwen-image`*
 - `image_edit`：
   - `endpoint`: **multimodal-generation/generation**
-  - `default`: `qwen-image-edit-max*`
+  - `default`: `qwen-image-edit-max`*
 
 > 注：如果希望严格把 “wan2.6-t2i” 完全独立出来，也可以新增 `t2i_async` 能力；本设计先不引入第三个键，优先通过模型族选择在 `t2i` 内部区分同步/异步协议族（见后文“协议选择策略”）。
 
@@ -171,6 +173,8 @@ flowchart TD
   RouteIG -->|online| DashIG[DashScope image-generation]
 ```
 
+
+
 > 说明：本设计允许本地 unified 只实现一部分协议族；如果本地统一服务只提供 image-generation 风格接口，那么 gateway 在本地侧也需要做协议适配（将 multimodal 请求转换为统一服务可理解的请求）。这属于“路由内部统一”的职责。
 
 ---
@@ -214,11 +218,11 @@ App 端（backend）在 `multimodalProvider=dashscope|jiaojiao` 两种模式下�
 
 1. 写本设计文档（本文件）
 2. 更新/补齐 `docs/third-party-api/` 的接口文档：
-   - `dashscope-api.md`：加入 Qwen-Image/Qwen-Image-Edit 的推荐路径与入参约束，明确与 wan2.6-t2i 的差异
-   - `百炼万象2.6的图片编辑api.md`：标注其协议族与是否任务式
+  - `dashscope-api.md`：加入 Qwen-Image/Qwen-Image-Edit 的推荐路径与入参约束，明确与 wan2.6-t2i 的差异
+  - `百炼万象2.6的图片编辑api.md`：标注其协议族与是否任务式
 3. （仅写方案，不在本仓库实现）输出 **G3 网关改造方案文档**，供 `jiaojiao-gateway` 仓库落地实现：
-   - 落盘路径（本仓库）：`docs/superpowers/specs/2026-04-26-jiaojiao-gateway-image-routing-design.md`
-   - 文档应包含：对外两路由契约、online/local 分流策略、与 DashScope upstream 的对齐表、兼容策略（历史客户端）、以及测试清单
+  - 落盘路径（本仓库）：`docs/superpowers/specs/2026-04-26-jiaojiao-gateway-image-routing-design.md`
+  - 文档应包含：对外两路由契约、online/local 分流策略、与 DashScope upstream 的对齐表、兼容策略（历史客户端）、以及测试清单
 4. 对齐并更新 `deploy/jiaojiao-gateway/docs/api.md`（文档层面对齐即可）：明确对外两条路由，并写清模型族映射策略与兼容策略（具体代码实现由网关仓库完成）
 
 ### 阶段 1：配置拆分与类型升级
@@ -232,7 +236,7 @@ App 端（backend）在 `multimodalProvider=dashscope|jiaojiao` 两种模式下�
 - `t2i` 适配器支持 Qwen-Image 的同步 multimodal 调用
 - `image_edit` 适配器支持 Qwen-Image-Edit 的同步 multimodal 调用（现有基本满足，但配置来源需改为 `image_edit`）
 - `wan2.6-t2i` 维持现有异步任务实现
-- **验证门禁**：完成 G2 后必须运行单元测试与集成测试；集成测试需调用真实 API，且 `qwen-image` 与 `qwen-image-edit*` 均能拿到真实输出图片 URL 后，G2 才算完成。
+- **验证门禁**：完成 G2 后必须运行单元测试与集成测试；集成测试需调用真实 API，且 `qwen-image` 与 `qwen-image-edit`* 均能拿到真实输出图片 URL 后，G2 才算完成。
 
 ### 阶段 3：Gateway 路由对齐
 

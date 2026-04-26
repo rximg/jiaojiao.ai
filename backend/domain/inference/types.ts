@@ -107,7 +107,7 @@ export interface GenerateScriptFromImageResult {
 
 export type Provider = 'dashscope' | 'zhipu' | 'jiaojiao';
 
-export type AIAbility = 'llm' | 'vl' | 'tts' | 't2i';
+export type AIAbility = 'llm' | 'vl' | 'tts' | 't2i' | 'image_edit';
 
 export interface AIConfigBase {
   provider: Provider;
@@ -148,13 +148,26 @@ export interface T2IAIConfig extends AIConfigBase {
   taskEndpoint: string;
   model: string;
   negativePrompt?: string;
+  /** 文生图的 legacy 异步提交入口（如 wan2.6-t2i） */
+  legacyEndpoint?: string;
   /** 轮询间隔（毫秒），来自 ai_models.json */
   poll_interval_ms?: number;
   /** 轮询最大次数，来自 ai_models.json */
   max_poll_attempts?: number;
 }
 
-export type AIConfig = LLMAIConfig | VLAIConfig | TTSAIConfig | T2IAIConfig;
+/** 图像编辑（同步为主）：仅 endpoint；必要时可复用 taskEndpoint 做 legacy 轮询 */
+export interface ImageEditAIConfig extends AIConfigBase {
+  endpoint: string;
+  model: string;
+  taskEndpoint?: string;
+  /** 轮询间隔（毫秒），来自 ai_models.json（仅当使用异步/legacy 时） */
+  poll_interval_ms?: number;
+  /** 轮询最大次数，来自 ai_models.json（仅当使用异步/legacy 时） */
+  max_poll_attempts?: number;
+}
+
+export type AIConfig = LLMAIConfig | VLAIConfig | TTSAIConfig | T2IAIConfig | ImageEditAIConfig;
 
 // ---------------------------------------------------------------------------
 // ai_models.json：第一层级为 provider
