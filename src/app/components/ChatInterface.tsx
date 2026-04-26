@@ -48,8 +48,8 @@ export default function ChatInterface({
   const [hitlPolicy, setHitlPolicy] = useState<HitlPolicy>({ mode: 'strict', allowlist: [] });
   const [hitlPolicyLoading, setHitlPolicyLoading] = useState(false);
   const isCreatingSessionRef = useRef(false);
-  /** 本次「案例」模式下是否已执行过创建新 session，避免重复创建 */
-  const createdForNullRef = useRef(false);
+  /** 进入「案例新会话」时先 reset 一次，避免重复 reset */
+  const resetForNullRef = useRef(false);
 
   // 加载或创建会话
   useEffect(() => {
@@ -65,7 +65,7 @@ export default function ChatInterface({
         console.log('[ChatInterface] Already in session:', loadSessionId, 'skipping reload');
         return;
       }
-      createdForNullRef.current = false;
+      resetForNullRef.current = false;
       console.log('[ChatInterface] Loading session:', loadSessionId);
       loadSession(loadSessionId).catch((error) => {
         console.error('[ChatInterface] Failed to load session:', error);
@@ -74,30 +74,42 @@ export default function ChatInterface({
       });
       setShowWelcome(false);
     } else {
-      // loadSessionId === null：点击案例或从欢迎页进入，一律重置并创建新 session
-      if (createdForNullRef.current) {
+      // loadSessionId === null：点击案例进入聊天
+      // 优化：不要提前创建空 session，避免退出后历史里出现“空白会话”。
+      // 只在用户第一次发送消息/点击快捷选项时再创建 session。
+      if (resetForNullRef.current) {
         return;
       }
-      console.log('[ChatInterface] Creating new session (case clicked or first load)');
-      createdForNullRef.current = true;
-      isCreatingSessionRef.current = true;
+      console.log('[ChatInterface] Entered case chat; resetting without creating session yet');
+      resetForNullRef.current = true;
       
-      // resetSession 现在是 async，需要先等待关闭 runtime
       (async () => {
-        await resetSession();
         try {
-          await createNewSession('新对话', undefined, caseIdForNewSession || undefined);
-          isCreatingSessionRef.current = false;
+          await resetSession();
         } catch (err) {
-          isCreatingSessionRef.current = false;
-          createdForNullRef.current = false; // 失败后允许重试
-          console.error('Failed to create session:', err);
+          resetForNullRef.current = false;
+          console.error('Failed to reset session:', err);
         }
       })();
       
       // 不在这里 setShowWelcome(false)，保留快捷选项，等用户发消息后再隐藏
     }
-  }, [loadSessionId, caseIdForNewSession, currentSessionId, createNewSession, loadSession, resetSession]);
+  }, [loadSessionId, currentSessionId, loadSession, resetSession, onBack]);
+
+  const ensureSessionForSend = useCallback(async (): Promise<string | null> => {
+    if (currentSessionId) return currentSessionId;
+    if (isCreatingSessionRef.current) return null;
+    isCreatingSessionRef.current = true;
+    try {
+      const result = await createNewSession('新对话', undefined, caseIdForNewSession || undefined);
+      return result;
+    } catch (err) {
+      console.error('[ChatInterface] Failed to create session for send:', err);
+      return null;
+    } finally {
+      isCreatingSessionRef.current = false;
+    }
+  }, [caseIdForNewSession, createNewSession, currentSessionId]);
 
   const handleSubmit = useCallback(
     async (e?: FormEvent) => {
@@ -120,16 +132,14 @@ export default function ChatInterface({
         return;
       }
       if (!messageText || isLoading) return;
-      if (!currentSessionId) {
-        onBack();
-        return;
-      }
+      const sessionId = await ensureSessionForSend();
+      if (!sessionId) return;
       setShowWelcome(false);
-      await sendMessage(messageText);
+      await sendMessage(messageText, sessionId);
       setInput('');
       if (textareaRef.current) textareaRef.current.focus();
     },
-    [input, isLoading, currentSessionId, sendMessage, onBack, pendingHitlRequest, respondConfirm]
+    [ensureSessionForSend, input, isLoading, pendingHitlRequest, respondConfirm, sendMessage]
   );
 
   const handleKeyDown = useCallback(
@@ -144,15 +154,11 @@ export default function ChatInterface({
 
   const handleQuickOptionClick = useCallback(
     (option: string) => {
-      if (!currentSessionId) {
-        onBack();
-        return;
-      }
       setInput(option);
       setShowWelcome(false);
       setTimeout(() => handleSubmit(), 0);
     },
-    [currentSessionId, handleSubmit, onBack]
+    [handleSubmit]
   );
 
   const handleHitlContinue = useCallback(

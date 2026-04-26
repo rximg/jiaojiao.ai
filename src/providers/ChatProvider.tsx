@@ -19,7 +19,7 @@ interface ChatContextType {
   lastArtifactTime: number; // 最后一次生成产物的时间戳，用于触发刷新
   /** 当前会话下 TTS 实时进度（聊天框内独立一行显示），流结束或会话切换时清空 */
   ttsProgressLive: { current: number; total: number } | null;
-  sendMessage: (text: string) => Promise<void>;
+  sendMessage: (text: string, sessionIdOverride?: string) => Promise<void>;
   respondConfirm: (requestId: string, approved: boolean, editedPayload?: Record<string, unknown>, cancelReason?: string) => Promise<void>;
   dismissQuotaError: () => void;
   dismissAgentError: () => void;
@@ -406,14 +406,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const sendMessage = useCallback(async (text: string) => {
+  const sendMessage = useCallback(async (text: string, sessionIdOverride?: string) => {
     console.log('[ChatProvider] sendMessage called with:', {
       text,
       currentSessionId,
+      sessionIdOverride,
     });
 
     // 无 session 时不创建、不发送，由界面回退到欢迎页
-    const sessionId = currentSessionId;
+    const sessionId = sessionIdOverride ?? currentSessionId;
     if (!sessionId) {
       console.warn('[ChatProvider] No session, cannot send; UI should navigate to welcome.');
       return;
