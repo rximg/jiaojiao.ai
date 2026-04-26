@@ -81,7 +81,7 @@
 - `protocol_family`: `multimodal_sync` | `image_generation_async`
 - `backend_type`: `local` | `online`
 - `endpoint`: upstream base url
-- `task_prefix`: local task id 前缀（如 `qi_` / `qe_`）
+- `task_prefix`: local task id 前缀（如 `qi`_ / `qe_`）
 
 > 这样路由决策完全配置驱动，避免“某次新增模型族导致误路由”。
 

@@ -5,15 +5,19 @@ import {
   submitEditImageDashScope,
   pollEditImageDashScope,
 } from '../../../../../backend/infrastructure/inference/adapters/image-edit/dashscope.ts';
-import type { T2IAIConfig } from '../../../../../backend/domain/inference/types.ts';
+import type { ImageEditAIConfig } from '../../../../../backend/domain/inference/types.ts';
 import type { EditImagePortInput } from '../../../../../backend/infrastructure/inference/port-types.ts';
 
-const cfg: T2IAIConfig = {
+const cfg: ImageEditAIConfig = {
   provider: 'dashscope',
   apiKey: 'test-api-key',
   endpoint: 'https://dashscope.aliyuncs.com/api/v1/services/aigc/image-generation/generation',
   taskEndpoint: 'https://dashscope.aliyuncs.com/api/v1/tasks',
   model: 'wan2.6-image',
+  submitModeByModelId: {
+    'wan2.6-image': 'async',
+    'custom-image-edit': 'async',
+  },
 };
 
 const input: EditImagePortInput = {
@@ -362,6 +366,7 @@ describe('image-edit/dashscope adapter', () => {
         ...cfg,
         provider: 'jiaojiao',
         endpoint: 'http://localhost:9021/api/v1/services/aigc/image-generation/generation',
+        submitModeByModelId: { ...cfg.submitModeByModelId },
       },
       input
     );

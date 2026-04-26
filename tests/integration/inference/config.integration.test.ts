@@ -54,7 +54,9 @@ describe('Inference / getAIConfig', () => {
     const t2i = cfg as T2IAIConfig;
     expect(t2i.endpoint).toBeDefined();
     expect(t2i.taskEndpoint).toBeDefined();
-    expect(t2i.model).toBe('qwen-image');
+    expect(t2i.endpoint).toContain('/api/v1/services/aigc/multimodal-generation/generation');
+    expect(t2i.legacyEndpoint).toContain('/api/v1/services/aigc/image-generation/generation');
+    expect(t2i.model).toBe('qwen-image-2.0-pro');
   });
 
   it('returns Image Edit config with endpoint', async () => {
@@ -84,7 +86,8 @@ describe('Inference / getAIConfig', () => {
     const cfg = await getAIConfig('t2i');
     const t2i = cfg as T2IAIConfig;
     expect(t2i.provider).toBe('jiaojiao');
-    expect(t2i.endpoint).toContain('/api/v1/services/aigc/image-generation/generation');
+    expect(t2i.endpoint).toContain('/api/v1/services/aigc/multimodal-generation/generation');
+    expect(t2i.legacyEndpoint).toContain('/api/v1/services/aigc/image-generation/generation');
     expect(t2i.taskEndpoint).toContain('/api/v1/tasks');
     expect(t2i.model).toBe('qwen-image');
   });

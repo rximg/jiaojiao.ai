@@ -156,11 +156,34 @@ export interface T2IAIConfig extends AIConfigBase {
   max_poll_attempts?: number;
 }
 
+// ---------------------------------------------------------------------------
+// ai_models.json：第一层级为 provider
+// ---------------------------------------------------------------------------
+
+/** 图像编辑提交方式：来自 ai_models.json `models[].submit_mode`，缺省 sync */
+export type ImageEditSubmitMode = 'sync' | 'async';
+
+export interface AiModelEntry {
+  id: string;
+  label?: string;
+  /** 仅 image_edit：异步需 task_id + 轮询；省略则为 sync */
+  submit_mode?: ImageEditSubmitMode;
+}
+
+export interface ProviderAbilityModelsConfig {
+  default: string;
+  models: AiModelEntry[];
+}
+
 /** 图像编辑（同步为主）：仅 endpoint；必要时可复用 taskEndpoint 做 legacy 轮询 */
 export interface ImageEditAIConfig extends AIConfigBase {
   endpoint: string;
   model: string;
   taskEndpoint?: string;
+  /**
+   * 各模型 id → 提交方式（来自 models[].submit_mode；按 resolveEditImageModel 得到的 effective id 查询，缺省 sync）
+   */
+  submitModeByModelId: Record<string, ImageEditSubmitMode>;
   /** 轮询间隔（毫秒），来自 ai_models.json（仅当使用异步/legacy 时） */
   poll_interval_ms?: number;
   /** 轮询最大次数，来自 ai_models.json（仅当使用异步/legacy 时） */
@@ -168,20 +191,6 @@ export interface ImageEditAIConfig extends AIConfigBase {
 }
 
 export type AIConfig = LLMAIConfig | VLAIConfig | TTSAIConfig | T2IAIConfig | ImageEditAIConfig;
-
-// ---------------------------------------------------------------------------
-// ai_models.json：第一层级为 provider
-// ---------------------------------------------------------------------------
-
-export interface AiModelEntry {
-  id: string;
-  label?: string;
-}
-
-export interface ProviderAbilityModelsConfig {
-  default: string;
-  models: AiModelEntry[];
-}
 
 export type ProviderAbilityMap = {
   [K in AIAbility]: ProviderAbilityModelsConfig;

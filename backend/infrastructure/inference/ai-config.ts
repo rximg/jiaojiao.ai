@@ -13,6 +13,7 @@ import type {
   TTSAIConfig,
   T2IAIConfig,
   ImageEditAIConfig,
+  ImageEditSubmitMode,
   AIConfig,
   AiModelsSchema,
   ProviderAbilityModelsConfig,
@@ -66,6 +67,20 @@ function resolveModel(abilityConfig: ProviderAbilityModelsConfig, specifiedModel
   const modelId = specifiedModel?.trim();
   const found = modelId ? abilityConfig.models.some((m) => m.id === modelId) : false;
   return found && modelId ? modelId : (abilityConfig.default || abilityConfig.models[0]?.id || '');
+}
+
+/** 从 image_edit 能力块 models[].submit_mode 构建映射；缺省 sync；wan2.6-t2i 与 wan2.6-image 共用异步配置 */
+function buildImageEditSubmitModeMap(
+  abilityBlock: ProviderAbilityModelsConfig
+): Record<string, ImageEditSubmitMode> {
+  const map: Record<string, ImageEditSubmitMode> = {};
+  for (const m of abilityBlock.models) {
+    map[m.id] = m.submit_mode === 'async' ? 'async' : 'sync';
+  }
+  if (map['wan2.6-image'] !== undefined && map['wan2.6-t2i'] === undefined) {
+    map['wan2.6-t2i'] = map['wan2.6-image'];
+  }
+  return map;
 }
 
 function resolveProviderForAbility(agentProvider: Provider | undefined, ability: AIAbility): Provider {
@@ -168,12 +183,44 @@ export async function getAIConfig(ability: AIAbility): Promise<AIConfig> {
           (abilityBlock as AbilityBlockWithUrls).taskEndpoint,
           'jiaojiao.t2i.taskEndpoint'
         );
+        const legacyEndpoint = (abilityBlock as AbilityBlockWithUrls).legacyEndpoint?.trim()
+          ? requireUrl(
+              (abilityBlock as AbilityBlockWithUrls).legacyEndpoint,
+              'jiaojiao.t2i.legacyEndpoint'
+            )
+          : undefined;
         const cfg: T2IAIConfig = {
           provider: 'jiaojiao',
           apiKey,
           endpoint,
+          ...(legacyEndpoint && { legacyEndpoint }),
           taskEndpoint,
           model,
+          ...((abilityBlock as AbilityBlockWithUrls).poll_interval_ms != null && {
+            poll_interval_ms: (abilityBlock as AbilityBlockWithUrls).poll_interval_ms,
+          }),
+          ...((abilityBlock as AbilityBlockWithUrls).max_poll_attempts != null && {
+            max_poll_attempts: (abilityBlock as AbilityBlockWithUrls).max_poll_attempts,
+          }),
+        };
+        return cfg;
+      }
+      case 'image_edit': {
+        const endpoint = requireUrl(
+          (abilityBlock as AbilityBlockWithUrls).endpoint,
+          'jiaojiao.image_edit.endpoint'
+        );
+        const taskEndpoint = (abilityBlock as AbilityBlockWithUrls).taskEndpoint?.trim()
+          ? (abilityBlock as AbilityBlockWithUrls).taskEndpoint!.replace(/\/$/, '')
+          : undefined;
+        const submitModeByModelId = buildImageEditSubmitModeMap(abilityBlock);
+        const cfg: ImageEditAIConfig = {
+          provider: 'jiaojiao',
+          apiKey,
+          endpoint,
+          model,
+          submitModeByModelId,
+          ...(taskEndpoint && { taskEndpoint }),
           ...((abilityBlock as AbilityBlockWithUrls).poll_interval_ms != null && {
             poll_interval_ms: (abilityBlock as AbilityBlockWithUrls).poll_interval_ms,
           }),
@@ -277,11 +324,13 @@ export async function getAIConfig(ability: AIAbility): Promise<AIConfig> {
         : undefined;
       const poll_interval_ms = abilityBlock.poll_interval_ms;
       const max_poll_attempts = abilityBlock.max_poll_attempts;
+      const submitModeByModelId = buildImageEditSubmitModeMap(abilityBlock);
       const cfg: ImageEditAIConfig = {
         provider,
         apiKey,
         endpoint,
         model,
+        submitModeByModelId,
         ...(taskEndpoint && { taskEndpoint }),
         ...(poll_interval_ms != null && { poll_interval_ms }),
         ...(max_poll_attempts != null && { max_poll_attempts }),

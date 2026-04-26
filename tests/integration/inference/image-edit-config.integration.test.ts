@@ -3,6 +3,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { getAIConfig } from '../../../backend/infrastructure/inference/ai-config.js';
+import type { ImageEditAIConfig } from '../../../backend/domain/inference/types.js';
 
 vi.mock('../../../backend/app-config.js', () => ({ loadConfig: vi.fn() }));
 
@@ -34,10 +35,13 @@ describe('Inference / getAIConfig / image_edit', () => {
   });
 
   it('returns image_edit config with endpoint', async () => {
-    const cfg = await getAIConfig('image_edit');
+    const cfg = (await getAIConfig('image_edit')) as ImageEditAIConfig;
     expect(cfg.provider).toBeDefined();
-    expect((cfg as any).endpoint).toBeDefined();
-    expect((cfg as any).model).toBeDefined();
+    expect(cfg.endpoint).toBeDefined();
+    expect(cfg.model).toBeDefined();
+    expect(cfg.submitModeByModelId).toBeDefined();
+    expect(cfg.submitModeByModelId['wan2.6-image']).toBe('async');
+    expect(cfg.submitModeByModelId['qwen-image-edit']).toBe('sync');
   });
 });
 

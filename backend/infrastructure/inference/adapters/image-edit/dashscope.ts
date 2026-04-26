@@ -1,7 +1,7 @@
 /**
  * DashScope 图像编辑适配器：兼容两种模式并统一返回 imageUrl。
- * - `wan2.6-image`：保留万象异步提交 + 轮询
- * - `qwen-image-edit-max`：同步返回，必要时从异步自动回退到同步
+ * - 同步 / 异步由 `ImageEditAIConfig.submitModeByModelId` 决定（来自 ai_models.json `models[].submit_mode`，缺省 sync）
+ * - 异步：`X-DashScope-Async` + `task_id` + 轮询；若上游拒绝异步可回退同步
  * 文档：docs/third-party-api/dashscope-api.md / docs/百炼万象2.6的图片编辑api.md
  */
 import type { ImageEditAIConfig } from '#backend/domain/inference/types.js';
@@ -38,7 +38,7 @@ function logEditImageDebug(stage: string, payload: Record<string, unknown>): voi
   console.log(`[image-edit][${stage}]`, JSON.stringify(payload, null, 2));
 }
 
-function resolveEditImageEndpoint(cfg: T2IAIConfig): string {
+function resolveEditImageEndpoint(cfg: ImageEditAIConfig): string {
   const trimmed = cfg.endpoint.replace(/\/$/, '');
 
   if (cfg.provider === 'jiaojiao') {
@@ -55,18 +55,13 @@ function resolveEditImageEndpoint(cfg: T2IAIConfig): string {
   return trimmed;
 }
 
-function resolveEditImageModel(cfg: T2IAIConfig, input: EditImagePortInput): string {
-  return (
-    input.model?.trim() ||
-    (cfg.provider === 'jiaojiao'
-      ? 'qwen-image-edit-max'
-      : cfg.model === 'wan2.6-t2i'
-        ? 'wan2.6-image'
-        : cfg.model)
-  );
+function resolveEditImageModel(cfg: ImageEditAIConfig, input: EditImagePortInput): string {
+  const explicit = input.model?.trim();
+  if (explicit) return explicit;
+  return cfg.model === 'wan2.6-t2i' ? 'wan2.6-image' : cfg.model;
 }
 
-function buildEditImageRequest(cfg: T2IAIConfig, input: EditImagePortInput) {
+function buildEditImageRequest(cfg: ImageEditAIConfig, input: EditImagePortInput) {
   const limitedImageDataUrls = input.imageDataUrls.slice(0, 3);
   const content = [
     { text: input.prompt },
@@ -106,8 +101,11 @@ function extractImageUrlFromResponse(data: DashScopeEditImageResponse): string |
   )?.image;
 }
 
-function shouldUseSyncImageEdit(resolvedModel: string): boolean {
-  return /^qwen-image-edit-max(?:-|$)/.test(resolvedModel);
+function resolveImageEditSubmitModeFromCfg(
+  cfg: ImageEditAIConfig,
+  effectiveModelId: string
+): 'sync' | 'async' {
+  return cfg.submitModeByModelId[effectiveModelId] === 'async' ? 'async' : 'sync';
 }
 
 function isAsyncUnsupportedError(error: unknown): boolean {
@@ -166,7 +164,9 @@ export async function pollEditImageDashScope(
   cfg: ImageEditAIConfig,
   taskId: string
 ): Promise<DashScopeEditImageOutput> {
-  const pollUrl = cfg.taskEndpoint.replace(/\/$/, '') + '/' + taskId;
+  const taskEp = cfg.taskEndpoint?.replace(/\/$/, '');
+  if (!taskEp) throw new Error('Edit image poll requires taskEndpoint in config');
+  const pollUrl = `${taskEp}/${taskId}`;
   const intervalMs = cfg.poll_interval_ms ?? DEFAULT_POLL_INTERVAL_MS;
   const maxAttempts = cfg.max_poll_attempts ?? DEFAULT_MAX_ATTEMPTS;
 
@@ -268,7 +268,7 @@ export async function callEditImageDashScope(
   input: EditImagePortInput
 ): Promise<DashScopeEditImageOutput> {
   const resolvedModel = resolveEditImageModel(cfg, input);
-  if (shouldUseSyncImageEdit(resolvedModel)) {
+  if (resolveImageEditSubmitModeFromCfg(cfg, resolvedModel) === 'sync') {
     return callEditImageDashScopeSync(cfg, input);
   }
 
