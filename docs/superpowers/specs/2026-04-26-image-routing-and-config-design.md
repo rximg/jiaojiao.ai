@@ -126,11 +126,13 @@ flowchart LR
 
 ### 模型族 → 协议族映射（权威规则）
 
-| 模型族 | 典型模型名（示例） | 能力语义 | DashScope 推荐/主路径 | 同步/异步 | 关键入参约束 |
-|---|---|---|---|---|---|
-| Qwen-Image | `qwen-image`、`qwen-image-2.0-*` | 文生图 | `multimodal-generation/generation` | 同步 | `content` 仅 1 个 `{text}` |
-| Qwen-Image-Edit | `qwen-image-edit`、`qwen-image-edit-max*` | 图像编辑 | `multimodal-generation/generation` | 同步 | `content` 必须含 1~3 `{image}` + 且仅 1 个 `{text}` |
-| Wan（万相） | `wan2.6-t2i` | 文生图（任务式） | `image-generation/generation` + `/tasks` | 异步 | 提交需 `X-DashScope-Async: enable`，轮询 `/tasks/{task_id}` |
+
+| 模型族             | 典型模型名（示例）                                | 能力语义     | DashScope 推荐/主路径                         | 同步/异步 | 关键入参约束                                                |
+| --------------- | ---------------------------------------- | -------- | ---------------------------------------- | ----- | ----------------------------------------------------- |
+| Qwen-Image      | `qwen-image`、`qwen-image-2.0-*`          | 文生图      | `multimodal-generation/generation`       | 同步    | `content` 仅 1 个 `{text}`                              |
+| Qwen-Image-Edit | `qwen-image-edit`、`qwen-image-edit-max*` | 图像编辑     | `multimodal-generation/generation`       | 同步    | `content` 必须含 1~3 `{image}` + 且仅 1 个 `{text}`         |
+| Wan（万相）         | `wan2.6-t2i`                             | 文生图（任务式） | `image-generation/generation` + `/tasks` | 异步    | 提交需 `X-DashScope-Async: enable`，轮询 `/tasks/{task_id}` |
+
 
 ### 参数与响应一致性要求
 
@@ -146,11 +148,9 @@ flowchart LR
 - `POST /api/v1/services/aigc/multimodal-generation/generation`
   - 支持：Qwen-Image（文生图）+ Qwen-Image-Edit（图像编辑）+（可选）TTS/VL
   - 行为：对外 **与 DashScope 保持一致的请求/响应结构**（同步返回图片 URL）
-
 - `POST /api/v1/services/aigc/image-generation/generation`
   - 支持：Wan 系任务式文生图（如 `wan2.6-t2i`）
   - 行为：保持任务式提交 + `/tasks` 查询协议
-
 - `GET /api/v1/tasks/{task_id}`
   - 行为：按任务前缀路由本地（如 `qi_` / `qe_`）与在线（DashScope）
 
