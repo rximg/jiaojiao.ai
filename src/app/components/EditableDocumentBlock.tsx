@@ -14,6 +14,8 @@ interface EditableDocumentBlockProps {
   minRows?: number;
   /** 是否禁用（已确认的只读展示） */
   disabled?: boolean;
+  /** 为 true 时不渲染顶部标题行（由外层统一展示标题） */
+  hideTitleRow?: boolean;
 }
 
 /**
@@ -27,6 +29,7 @@ export default function EditableDocumentBlock({
   placeholder = '输入内容...',
   minRows = 6,
   disabled = false,
+  hideTitleRow = false,
 }: EditableDocumentBlockProps) {
   const [localValue, setLocalValue] = useState(value);
 
@@ -44,11 +47,13 @@ export default function EditableDocumentBlock({
   );
 
   return (
-    <div className="w-full rounded-lg border border-border bg-muted/30 overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-foreground border-b border-border/50">
-        <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span>{title}</span>
-      </div>
+    <div className="w-full min-w-0 rounded-lg border border-border bg-muted/30 overflow-hidden">
+      {!hideTitleRow && (
+        <div className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-foreground border-b border-border/50">
+          <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <span>{title}</span>
+        </div>
+      )}
       <textarea
         value={localValue}
         onChange={handleChange}

@@ -19,6 +19,7 @@ export type {
   LLMAIConfig,
   TTSAIConfig,
   T2IAIConfig,
+  ImageEditAIConfig,
   VLAIConfig,
   AiModelsSchema,
   ProviderAbilityModelsConfig,

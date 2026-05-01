@@ -52,6 +52,27 @@ function formatRemaining(ms: number): string {
   return `${totalSeconds} 秒`;
 }
 
+const PLAN_REVIEW_PREVIEW_MAX_LINES = 5;
+const PLAN_REVIEW_PREVIEW_MAX_CHARS = 280;
+
+/** 策划稿收起时的摘要：前 N 行且不超过 N 字，用于判断是否需要折叠开关 */
+function planReviewCollapsedExcerpt(full: string): { excerpt: string; needsToggle: boolean } {
+  const t = full ?? '';
+  if (!t) return { excerpt: '', needsToggle: false };
+  const lines = t.split('\n');
+  const moreThanLines = lines.length > PLAN_REVIEW_PREVIEW_MAX_LINES;
+  let excerpt = lines.slice(0, PLAN_REVIEW_PREVIEW_MAX_LINES).join('\n');
+  let needsToggle = moreThanLines;
+  if (excerpt.length > PLAN_REVIEW_PREVIEW_MAX_CHARS) {
+    excerpt = `${excerpt.slice(0, PLAN_REVIEW_PREVIEW_MAX_CHARS)}…`;
+    needsToggle = true;
+  }
+  if (!needsToggle && excerpt.length < t.length) {
+    needsToggle = true;
+  }
+  return { excerpt, needsToggle };
+}
+
 export default function HitlConfirmBlock({ request, sessionId, onContinue, onCancel, onAddAllowlist }: HitlConfirmBlockProps) {
   const resolved = useMemo(() => ('approved' in request ? { approved: request.approved } : undefined), [request]);
   const title = ACTION_TITLE[request.actionType] ?? '确认操作';
@@ -110,6 +131,13 @@ export default function HitlConfirmBlock({ request, sessionId, onContinue, onCan
   const labelAnnotationsRef = useRef<Array<{ number: number; x: number; y: number }>>([]);
   const [editableVlUserPrompt, setEditableVlUserPrompt] = useState('');
   const [editableMarkdownContent, setEditableMarkdownContent] = useState('');
+  /** story.plan_review：默认展开；仅当正文超过摘要阈值时可收起 */
+  const [planReviewExpanded, setPlanReviewExpanded] = useState(true);
+
+  useEffect(() => {
+    if (request.actionType !== 'story.plan_review') return;
+    setPlanReviewExpanded(true);
+  }, [request.actionType, request.requestId]);
 
   // 加载 promptFile 内容
   useEffect(() => {
@@ -338,21 +366,68 @@ export default function HitlConfirmBlock({ request, sessionId, onContinue, onCan
     if (request.actionType === 'story.plan_review') {
       const markdownContent = typeof payload.markdownContent === 'string' ? payload.markdownContent : '';
       const documentTitle = typeof payload.title === 'string' ? payload.title : '绘本故事策划稿';
-      if (resolved) {
-        return <MarkdownDocumentBlock content={markdownContent} title={documentTitle} />;
-      }
-      if (payload.allowEdit) {
+      const allowEdit = payload.allowEdit === true;
+      const sourceText = resolved ? markdownContent : allowEdit ? editableMarkdownContent : markdownContent;
+      const { excerpt, needsToggle } = planReviewCollapsedExcerpt(sourceText);
+      const showCollapsed = needsToggle && !planReviewExpanded;
+
+      const headerRow = (opts: { mode: 'collapsed' | 'expanded' }) => (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-border/50">
+          <span className="text-sm font-medium text-foreground min-w-0">{documentTitle}</span>
+          {needsToggle &&
+            (opts.mode === 'collapsed' ? (
+              <button
+                type="button"
+                onClick={() => setPlanReviewExpanded(true)}
+                className="text-sm text-primary hover:underline shrink-0"
+              >
+                展开全文
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setPlanReviewExpanded(false)}
+                className="text-sm text-primary hover:underline shrink-0"
+              >
+                收起
+              </button>
+            ))}
+        </div>
+      );
+
+      if (showCollapsed) {
         return (
-          <EditableDocumentBlock
-            value={editableMarkdownContent}
-            onChange={setEditableMarkdownContent}
-            title={documentTitle}
-            placeholder="输入或编辑绘本故事策划稿 Markdown..."
-            minRows={16}
-          />
+          <div className="rounded-lg border border-border bg-muted/30 overflow-hidden w-full min-w-0">
+            {headerRow({ mode: 'collapsed' })}
+            <pre className="text-xs whitespace-pre-wrap break-words px-3 py-3 text-muted-foreground font-sans max-w-none">
+              {excerpt}
+            </pre>
+            {!resolved && allowEdit && (
+              <p className="text-xs text-muted-foreground px-3 pb-3">收起状态下仅显示摘要，点击「展开全文」后可编辑。</p>
+            )}
+          </div>
         );
       }
-      return <MarkdownDocumentBlock content={markdownContent} title={documentTitle} />;
+
+      return (
+        <div className="rounded-lg border border-border bg-muted/30 overflow-hidden w-full min-w-0">
+          {headerRow({ mode: 'expanded' })}
+          {resolved ? (
+            <MarkdownDocumentBlock content={markdownContent} hideTitle />
+          ) : allowEdit ? (
+            <EditableDocumentBlock
+              value={editableMarkdownContent}
+              onChange={setEditableMarkdownContent}
+              title={documentTitle}
+              placeholder="输入或编辑绘本故事策划稿 Markdown..."
+              minRows={16}
+              hideTitleRow
+            />
+          ) : (
+            <MarkdownDocumentBlock content={markdownContent} hideTitle />
+          )}
+        </div>
+      );
     }
     return (
       <pre className="text-xs whitespace-pre-wrap break-words max-h-32 overflow-auto rounded bg-background/80 p-2 border border-border/50">
@@ -368,19 +443,14 @@ export default function HitlConfirmBlock({ request, sessionId, onContinue, onCan
       </div>
       <div className="flex-1 min-w-0 w-full rounded-2xl px-4 py-3 shadow-sm bg-muted text-muted-foreground">
         <div className="font-medium text-foreground mb-2">{title}</div>
-        <div className="mt-2 space-y-2">{renderPayload()}</div>
-        {resolved ? (
-          <div className="mt-3 pt-3 border-t border-border/50 text-sm opacity-80">
-            {resolved.approved ? '已继续' : '已取消'}
-          </div>
-        ) : (
-          <div className="mt-3 pt-3 border-t border-border/50 space-y-2">
+        {!resolved && (
+          <div className="mb-3 space-y-2 pb-3 border-b border-border/50">
             {timeoutMs > 0 && (
               <div className="text-sm text-muted-foreground">
                 {Math.ceil(timeoutMs / 1000)} 秒内确认，剩余 {formatRemaining(remainingMs)}
               </div>
             )}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={handleContinue}
@@ -412,6 +482,12 @@ export default function HitlConfirmBlock({ request, sessionId, onContinue, onCan
             </div>
           </div>
         )}
+        {resolved && (
+          <div className="mb-3 text-sm opacity-80 pb-3 border-b border-border/50">
+            {resolved.approved ? '已继续' : '已取消'}
+          </div>
+        )}
+        <div className="space-y-2">{renderPayload()}</div>
       </div>
     </div>
   );
