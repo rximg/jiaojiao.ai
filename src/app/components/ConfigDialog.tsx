@@ -26,9 +26,10 @@ const FALLBACK_LLM_OPTIONS: Record<string, LLMOpts> = {
     ],
   },
   zhipu: {
-    default: 'glm-4.7',
+    default: 'glm-4.5-air',
     models: [
       { id: 'glm-4.5', label: '智谱 GLM-4.5' },
+      { id: 'glm-4.5-air', label: '智谱 GLM-4.5 Air' },
       { id: 'glm-4.5-flash', label: '智谱 GLM-4.5 Flash' },
       { id: 'glm-4.6', label: '智谱 GLM-4.6' },
       { id: 'glm-4.7', label: '智谱 GLM-4.7' },

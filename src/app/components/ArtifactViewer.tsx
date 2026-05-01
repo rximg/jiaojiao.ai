@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ZoomIn, Play, Pause, FileJson } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -16,10 +16,34 @@ export default function ArtifactViewer({ artifacts }: ArtifactViewerProps) {
   const [playingAudio, setPlayingAudio] = useState<string | null>(null);
   const [showLLMOutput, setShowLLMOutput] = useState(false);
 
+  const normalizePath = (path: string) => path.trim().replace(/\\/g, '/').toLowerCase();
+
+  const uniqueImages = useMemo(() => {
+    const images = artifacts?.images ?? [];
+    const seen = new Set<string>();
+    return images.filter((img) => {
+      const key = normalizePath(img.path);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [artifacts?.images]);
+
+  const uniqueAudio = useMemo(() => {
+    const audio = artifacts?.audio ?? [];
+    const seen = new Set<string>();
+    return audio.filter((item) => {
+      const key = normalizePath(item.path);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [artifacts?.audio]);
+
   if (!artifacts) return null;
 
-  const hasArtifacts = (artifacts.images && artifacts.images.length > 0) ||
-                       (artifacts.audio && artifacts.audio.length > 0) ||
+  const hasArtifacts = uniqueImages.length > 0 ||
+                       uniqueAudio.length > 0 ||
                        artifacts.llmOutput;
 
   if (!hasArtifacts) return null;
@@ -35,11 +59,11 @@ export default function ArtifactViewer({ artifacts }: ArtifactViewerProps) {
   return (
     <div className="mt-2 space-y-2">
       {/* 图片展示 */}
-      {artifacts.images && artifacts.images.length > 0 && (
+      {uniqueImages.length > 0 && (
         <div className="space-y-1">
-          <div className="text-xs text-muted-foreground font-medium">生成的图像 ({artifacts.images.length})</div>
+          <div className="text-xs text-muted-foreground font-medium">生成的图像 ({uniqueImages.length})</div>
           <div className="grid grid-cols-3 gap-2">
-            {artifacts.images.map((img) => (
+            {uniqueImages.map((img) => (
               <div
                 key={img.path}
                 className="relative group cursor-pointer rounded-md overflow-hidden border border-border bg-muted hover:border-primary transition-colors aspect-square"
@@ -60,11 +84,11 @@ export default function ArtifactViewer({ artifacts }: ArtifactViewerProps) {
       )}
 
       {/* 音频播放器 */}
-      {artifacts.audio && artifacts.audio.length > 0 && (
+      {uniqueAudio.length > 0 && (
         <div className="space-y-1">
-          <div className="text-xs text-muted-foreground font-medium">生成的音频 ({artifacts.audio.length})</div>
+          <div className="text-xs text-muted-foreground font-medium">生成的音频 ({uniqueAudio.length})</div>
           <div className="space-y-1">
-            {artifacts.audio.map((audio) => {
+            {uniqueAudio.map((audio) => {
               const audioId = `audio-${audio.path.replace(/[^a-zA-Z0-9]/g, '-')}`;
               return (
                 <div

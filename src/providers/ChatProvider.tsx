@@ -81,22 +81,50 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     const artifacts: TodoItem['artifacts'] = {};
     let hasArtifacts = false;
 
+    const normalizePath = (rawPath: string) =>
+      rawPath
+        .replace(/^(图片：|音频：)/, '')
+        .trim()
+        .replace(/^['"`]+/, '')
+        .replace(/[)\]>'"`.,;:!?]+$/, '')
+        .replace(/\\/g, '/');
+
+    const uniqueByPath = <T extends { path: string }>(items: T[]): T[] => {
+      const seen = new Set<string>();
+      return items.filter((item) => {
+        const key = normalizePath(item.path).toLowerCase();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    };
+
     // 解析图片路径
     const imageMatches = content.match(/(?:图片：|outputs[/\\]images[/\\])[^\n\s]+\.(?:png|jpg|jpeg)/gi);
     if (imageMatches) {
-      artifacts.images = imageMatches.map(path => ({
-        path: path.replace(/^图片：/, '').trim()
-      }));
-      hasArtifacts = true;
+      const images = uniqueByPath(
+        imageMatches.map((path) => ({
+          path: normalizePath(path),
+        }))
+      );
+      if (images.length > 0) {
+        artifacts.images = images;
+        hasArtifacts = true;
+      }
     }
 
     // 解析音频路径
     const audioMatches = content.match(/(?:音频：|outputs[/\\]audio[/\\])[^\n\s]+\.(?:mp3|wav)/gi);
     if (audioMatches) {
-      artifacts.audio = audioMatches.map(path => ({
-        path: path.replace(/^音频：/, '').trim()
-      }));
-      hasArtifacts = true;
+      const audio = uniqueByPath(
+        audioMatches.map((path) => ({
+          path: normalizePath(path),
+        }))
+      );
+      if (audio.length > 0) {
+        artifacts.audio = audio;
+        hasArtifacts = true;
+      }
     }
 
     // 解析LLM输出：优先JSON，其次纯文本
@@ -224,7 +252,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
       setMessages((prev) => {
         const updated = sanitizeMessages(
-          mergeToolCallsIntoMessages(prev, data.messageId, data.toolCalls)
+          mergeToolCallsIntoMessages(prev, data.messageId, data.toolCalls ?? [])
         );
         allMessagesRef.current = updated;
         return updated;
