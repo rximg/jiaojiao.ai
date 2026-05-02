@@ -3,6 +3,7 @@
  */
 import type { T2IAIConfig } from '#backend/domain/inference/types.js';
 import { AsyncInferenceBase } from '../../bases/async-inference-base.js';
+import { throwIfResponseNotOk } from '../../http-fetch-helpers.js';
 import type { T2IPortInput } from '../../port-types.js';
 
 const DEFAULT_POLL_INTERVAL_MS = 3000;
@@ -32,10 +33,7 @@ export async function submitTaskZhipu(
     },
     body: JSON.stringify(body as Record<string, unknown>),
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`T2I submit failed: ${res.status} ${res.statusText} ${text}`);
-  }
+  await throwIfResponseNotOk(res, 'T2I submit failed');
   const data = (await res.json()) as { id?: string };
   const taskId = data?.id;
   if (!taskId) throw new Error('T2I submit did not return task id');
@@ -52,7 +50,7 @@ export async function pollForImageUrlZhipu(cfg: T2IAIConfig, taskId: string): Pr
       method: 'GET',
       headers: { Authorization: `Bearer ${cfg.apiKey}` },
     });
-    if (!res.ok) throw new Error(`T2I poll failed: ${res.status}`);
+    await throwIfResponseNotOk(res, 'T2I poll failed');
     const taskData = (await res.json()) as {
       task_status?: string;
       image_result?: Array<{ url?: string }>;

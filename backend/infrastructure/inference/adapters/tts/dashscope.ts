@@ -5,6 +5,7 @@
  */
 import type { TTSAIConfig } from '#backend/domain/inference/types.js';
 import { SyncInferenceBase } from '../../bases/sync-inference-base.js';
+import { throwIfResponseNotOk } from '../../http-fetch-helpers.js';
 import type { TTSPortInput } from '../../port-types.js';
 
 const VOICE_MAP: Record<string, string> = {
@@ -44,10 +45,7 @@ export async function fetchTtsAudioUrlDashScope(
       },
     }),
   });
-  if (!response.ok) {
-    const body = await response.text().catch(() => '');
-    throw new Error(`TTS API error: ${response.status} ${response.statusText} ${body}`);
-  }
+  await throwIfResponseNotOk(response, 'TTS API error');
   const data = (await response.json()) as {
     output?: { audio?: { url?: string }; id?: string; expires_at?: number };
   };

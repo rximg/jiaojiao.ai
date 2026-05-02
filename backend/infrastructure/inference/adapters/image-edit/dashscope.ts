@@ -6,6 +6,7 @@
  */
 import type { ImageEditAIConfig } from '#backend/domain/inference/types.js';
 import { SyncInferenceBase } from '../../bases/sync-inference-base.js';
+import { throwIfResponseNotOk } from '../../http-fetch-helpers.js';
 import type { EditImagePortInput } from '../../port-types.js';
 
 const DEFAULT_POLL_INTERVAL_MS = 2000;
@@ -143,10 +144,7 @@ export async function submitEditImageDashScope(
     statusText: res.statusText,
   });
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Edit image submit failed: ${res.status} ${res.statusText} ${text}`);
-  }
+  await throwIfResponseNotOk(res, 'Edit image submit failed');
 
   const data = (await res.json()) as DashScopeEditImageResponse;
   if (data?.code) {
@@ -187,10 +185,7 @@ export async function pollEditImageDashScope(
       },
     });
 
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new Error(`Edit image poll failed: ${res.status} ${res.statusText} ${text}`);
-    }
+    await throwIfResponseNotOk(res, 'Edit image poll failed');
 
     const data = (await res.json()) as DashScopeEditImageResponse;
     if (data?.code) {
@@ -244,10 +239,7 @@ async function callEditImageDashScopeSync(
     statusText: res.statusText,
   });
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Edit image sync call failed: ${res.status} ${res.statusText} ${text}`);
-  }
+  await throwIfResponseNotOk(res, 'Edit image sync call failed');
 
   const data = (await res.json()) as DashScopeEditImageResponse;
   logEditImageDebug('submit-sync-json', { data });

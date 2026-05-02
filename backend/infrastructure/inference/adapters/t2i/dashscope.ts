@@ -3,6 +3,7 @@
  */
 import type { T2IAIConfig } from '#backend/domain/inference/types.js';
 import { AsyncInferenceBase } from '../../bases/async-inference-base.js';
+import { throwIfResponseNotOk } from '../../http-fetch-helpers.js';
 import type { T2IPortInput } from '../../port-types.js';
 
 const DEFAULT_POLL_INTERVAL_MS = 2000;
@@ -66,10 +67,7 @@ export async function submitTaskDashScope(
         },
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`T2I submit failed: ${res.status} ${res.statusText} ${text}`);
-  }
+  await throwIfResponseNotOk(res, 'T2I submit failed');
   const data = (await res.json()) as {
     output?: {
       task_id?: string;
@@ -104,7 +102,7 @@ export async function pollForImageUrlDashScope(
       method: 'GET',
       headers: { Authorization: `Bearer ${cfg.apiKey}` },
     });
-    if (!res.ok) throw new Error(`T2I poll failed: ${res.status}`);
+    await throwIfResponseNotOk(res, 'T2I poll failed');
     const taskData = (await res.json()) as {
       output?: {
         task_status?: string;

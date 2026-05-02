@@ -3,6 +3,7 @@
  */
 import type { VLAIConfig } from '#backend/domain/inference/types.js';
 import { SyncInferenceBase } from '../../bases/sync-inference-base.js';
+import { throwIfResponseNotOk } from '../../http-fetch-helpers.js';
 import type { VLPortInput } from '../../port-types.js';
 
 export interface CallVLParams {
@@ -37,10 +38,7 @@ export async function callVLZhipu(params: CallVLParams): Promise<string> {
     body: JSON.stringify(body),
   });
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`VL API failed: ${res.status} ${res.statusText} ${text}`);
-  }
+  await throwIfResponseNotOk(res, 'VL API failed');
 
   const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
   const content = data?.choices?.[0]?.message?.content;

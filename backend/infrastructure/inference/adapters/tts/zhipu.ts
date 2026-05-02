@@ -3,6 +3,7 @@
  */
 import type { TTSAIConfig } from '#backend/domain/inference/types.js';
 import { SyncInferenceBase } from '../../bases/sync-inference-base.js';
+import { throwIfResponseNotOk } from '../../http-fetch-helpers.js';
 import type { TTSPortInput } from '../../port-types.js';
 
 const ZHIPU_PCM_SAMPLE_RATE = 24000;
@@ -40,10 +41,7 @@ export async function fetchTtsPcmZhipu(
       response_format: 'pcm',
     }),
   });
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`TTS API error: ${res.status} ${res.statusText} ${body}`);
-  }
+  await throwIfResponseNotOk(res, 'TTS API error');
   const pcmBuffer = Buffer.from(await res.arrayBuffer());
   return {
     pcmBuffer,
