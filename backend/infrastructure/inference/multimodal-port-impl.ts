@@ -399,8 +399,8 @@ export class MultimodalPortImpl implements MultimodalPort {
     };
   }
 
-  /** 合成单条语音并写入 artifact，供 generate_audio 工具调用 */
-  async synthesizeSpeechSingleItem(
+  /** 合成单条语音并写入 artifact（仅由 synthesizeSpeech 批量路径调用） */
+  private async synthesizeSpeechSingleItem(
     text: string,
     voice: string,
     format: string,

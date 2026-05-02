@@ -4,6 +4,7 @@
 import path from 'path';
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
+import type { SynthesizeSpeechItem } from '#backend/domain/inference/types.js';
 import { getMultimodalPortAsync } from '../infrastructure/repositories.js';
 import { readLineNumbers, appendEntries } from './line-numbers.js';
 import { loadConfig } from '../app-config.js';
@@ -49,9 +50,23 @@ function create(config: ToolConfig, context: ToolContext) {
       );
 
       const port = await getMultimodalPortAsync();
-      const { audioPath, audioUri } = await (
-        port as any
-      ).synthesizeSpeechSingleItem(text, voice, format, sessionId, relativePath);
+      const item: SynthesizeSpeechItem = {
+        text,
+        relativePath,
+        number: nextNumber,
+      };
+      const ttsResult = await port.synthesizeSpeech({
+        items: [item],
+        voice,
+        format,
+        sessionId,
+        rateLimitMs: 0,
+      });
+      if (ttsResult.audioPaths.length < 1 || ttsResult.audioUris.length < 1) {
+        throw new Error('synthesizeSpeech returned no audio for single item');
+      }
+      const audioPath = ttsResult.audioPaths[0];
+      const audioUri = ttsResult.audioUris[0];
 
       await appendEntries(
         [{ number: nextNumber, sessionId, relativePath, text }],
