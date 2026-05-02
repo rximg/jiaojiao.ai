@@ -1,6 +1,6 @@
 import { ipcMain, BrowserWindow, type WebContents } from 'electron';
 import { getBackendConfigDir } from './config.js';
-import { workspaceNotifier } from '../../backend/workspace-notifier.js';
+import { workspaceNotifier } from '../../backend/services/workspace-notifier.js';
 import { getCachedSessionCaseId, getSessionMessages } from './session.js';
 import { invokeAgentUseCase } from '../../backend/application/agent/index.js';
 import { resolveStepResultPaths } from '../../backend/application/helpers/resolve-step-result-paths.js';

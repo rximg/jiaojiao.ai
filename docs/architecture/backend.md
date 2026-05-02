@@ -41,7 +41,6 @@ flowchart LR
 ```
 backend/
 ├── app-config.ts                   # AppConfig：electron-store 配置读写封装
-├── workspace-notifier.ts           # WorkspaceNotifier：工作区变更事件广播
 │
 ├── agent/                          # 智能体核心
 │   ├── AgentFactory.ts             # 配置驱动创建主 Agent、Tool、LLM、MultimodalPort、Checkpointer
@@ -104,6 +103,7 @@ backend/
 │   ├── runtime-manager.ts          # RuntimeManager：按 sessionId 管理 AgentRuntime
 │   ├── fs.ts                       # WorkspaceFilesystem：路径安全校验，resolveWorkspaceRoot
 │   ├── workspace-service.ts        # WorkspaceService：工作区 CRUD
+│   ├── workspace-notifier.ts       # 工作区文件新增事件（EventEmitter，IPC 订阅以刷新前端）
 │   ├── hitl-service.ts             # HITLService：Human-in-the-loop 状态机
 │   ├── persistence-service.ts      # PersistenceService：Checkpoint 生命周期管理
 │   ├── workspace-checkpoint-saver.ts  # LangGraph checkpoint 存到 workspaces/{sessionId}/checkpoints/
@@ -140,14 +140,6 @@ backend/
 │   │   ├── tts.yaml
 │   │   ├── vl_script.yaml
 │   │   └── image_edit.yaml
-│
-├── interfaces/
-│   └── http/                       # HTTP 路由（已实现，但 Electron 主进程未挂载 Express）
-│       ├── session-routes.ts       # Session CRUD，委托应用层用例
-│       └── fs-routes.ts            # 文件系统操作，委托 ArtifactRepository
-│
-└── utils/
-    └── storage.ts
 ```
 
 ---
