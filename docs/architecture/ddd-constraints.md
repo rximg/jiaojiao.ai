@@ -111,12 +111,12 @@ export interface SessionMeta {
 项目采用**端口与适配器（Hexagonal）**模式封装 AI 能力：
 
 ```typescript
-// 同步端口（T2I / VL）
+// 同步端口：一次 execute 返回结果（VL / TTS / ImageEdit 等）
 interface SyncInferencePort<TInput, TOutput> {
   execute(input: TInput): Promise<TOutput>;
 }
 
-// 异步端口（submit-poll 模式，用于长时推理）
+// 异步端口：submit 得 taskId，再 poll 得结果（T2I 文生图等）
 interface AsyncInferencePort<TInput, TTaskId, TOutput> {
   submit(input: TInput): Promise<TTaskId>;
   poll(taskId: TTaskId): Promise<TOutput>;
@@ -195,8 +195,8 @@ export interface RunContext {
 
 ### 4.2 推理适配器
 
-- 每个 AI 提供商在 `infrastructure/inference/adapters/` 下独立目录（`dashscope/`、`zhipu/`）
-- 适配器实现 `SyncInferencePort` 或 `AsyncInferencePort`，通过 `create-ports.ts` 工厂函数组装
+- 按**能力**分子目录：`infrastructure/inference/adapters/{llm,vl,t2i,tts,image-edit}/`，各目录内以 `dashscope.ts` / `zhipu.ts`（及 `index.ts` 等）区分厂商；跨厂商可复用逻辑放在 `adapters/openai-compatible/` 或 `inference/` 根下小模块（如 `http-fetch-helpers.ts`）
+- 适配器实现 `SyncInferencePort` 或 `AsyncInferencePort`（薄基类见 `bases/sync-inference-base.ts`、`async-inference-base.ts`），通过 `create-ports.ts` 工厂函数组装
 - `MultimodalPortImpl` 是组合适配器，将四类能力端口聚合为 `MultimodalPort`，是 Tools 层的唯一依赖入口
 - `getAIConfig()` 负责从 `AppConfig` 解析运行时 AI 提供商选择，**不允许在适配器内硬编码提供商**
 

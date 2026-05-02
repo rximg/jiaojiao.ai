@@ -82,12 +82,16 @@ backend/
 │   │   ├── multimodal-port-impl.ts # MultimodalPortImpl：resolve → trace → 调用端口 → 写 workspace
 │   │   ├── create-ports.ts         # 工厂函数：createVLPort / createT2IPort / createEditImagePort / createTTSSyncPort
 │   │   ├── port-types.ts           # 端口输入类型别名
-│   │   ├── bases/                  # 基础适配器类
+│   │   ├── vl-script-response.ts   # VL 剧本：从模型文本中抽取可 JSON.parse 的数组字符串
+│   │   ├── http-fetch-helpers.ts   # 适配器共用：HTTP 非 2xx 时读 body 并抛错
+│   │   ├── dashscope-multimodal-image-url.ts  # DashScope 多模态响应中首张图 URL（T2I / image-edit 共用）
+│   │   ├── bases/                  # SyncInferenceBase / AsyncInferenceBase（implements 领域端口并委托子类）
 │   │   └── adapters/
-│   │       ├── llm/                # dashscope.ts、zhipu.ts（创建 ChatOpenAI 实例）
-│   │       ├── vl/                 # VLDashScopePort、VLZhipuPort
+│   │       ├── openai-compatible/  # LLM ChatOpenAI 构造、VL /chat/completions 等跨厂商相同逻辑
+│   │       ├── llm/                # dashscope.ts、zhipu.ts（委托 openai-compatible）
+│   │       ├── vl/                 # VLDashScopePort、VLZhipuPort（委托 openai-compatible）
 │   │       ├── t2i/                # T2IDashScopePort（async poll）、T2IZhipuPort
-│   │       ├── tts/                # TTSDashScopePort、TTSZhipuPort（PCM 输出）
+│   │       ├── tts/                # TTSDashScopePort、TTSZhipuPort（PCM / audioUrl）
 │   │       └── image-edit/         # EditImageDashScopePort、EditImageZhipuPort
 │   └── persistence/
 │       ├── index.ts
@@ -114,7 +118,7 @@ backend/
 │   ├── index.ts
 │   ├── generate-image.ts           # 文生图（T2I）
 │   ├── edit-image.ts               # 图片编辑
-│   ├── generate-audio.ts           # 单条/单批次 TTS 合成入口
+│   ├── generate-audio.ts           # 单条 TTS（MultimodalPort.synthesizeSpeech，items 单元素）
 │   ├── generate-script-from-image.ts  # 以图生剧本（VL）
 │   ├── annotate-image-with-numbers.ts # 在图片上标注序号
 │   ├── batch-tool-wrapper.ts       # 批量工具包装器（统一 BatchProgress 推送）
