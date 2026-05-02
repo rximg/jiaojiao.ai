@@ -6,6 +6,7 @@
  */
 import type { ImageEditAIConfig } from '#backend/domain/inference/types.js';
 import { SyncInferenceBase } from '../../bases/sync-inference-base.js';
+import { extractFirstImageUrlFromDashScopeChoicesRoot } from '../../dashscope-multimodal-image-url.js';
 import { throwIfResponseNotOk } from '../../http-fetch-helpers.js';
 import type { EditImagePortInput } from '../../port-types.js';
 
@@ -94,12 +95,6 @@ function buildEditImageRequest(cfg: ImageEditAIConfig, input: EditImagePortInput
     resolvedModel,
     body,
   };
-}
-
-function extractImageUrlFromResponse(data: DashScopeEditImageResponse): string | undefined {
-  return data?.output?.choices?.[0]?.message?.content?.find(
-    (item) => !!item?.image && (!item?.type || item.type === 'image')
-  )?.image;
 }
 
 function resolveImageEditSubmitModeFromCfg(
@@ -198,7 +193,7 @@ export async function pollEditImageDashScope(
     }
 
     if (status === 'SUCCEEDED') {
-      const imageUrl = extractImageUrlFromResponse(data);
+      const imageUrl = extractFirstImageUrlFromDashScopeChoicesRoot(data);
       if (!imageUrl) {
         throw new Error('Edit image task succeeded but no output image URL returned');
       }
@@ -247,7 +242,7 @@ async function callEditImageDashScopeSync(
     throw new Error(`Edit image API error: ${data.code} ${data.message ?? ''}`.trim());
   }
 
-  const imageUrl = extractImageUrlFromResponse(data);
+  const imageUrl = extractFirstImageUrlFromDashScopeChoicesRoot(data);
   if (!imageUrl) {
     throw new Error('Edit image sync call did not return output image URL');
   }

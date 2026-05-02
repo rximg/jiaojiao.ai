@@ -3,6 +3,7 @@
  */
 import type { T2IAIConfig } from '#backend/domain/inference/types.js';
 import { AsyncInferenceBase } from '../../bases/async-inference-base.js';
+import { extractFirstImageUrlFromDashScopeChoicesRoot } from '../../dashscope-multimodal-image-url.js';
 import { throwIfResponseNotOk } from '../../http-fetch-helpers.js';
 import type { T2IPortInput } from '../../port-types.js';
 
@@ -24,16 +25,6 @@ function encodeSyncImageUrlAsTaskId(imageUrl: string): string {
 function decodeSyncImageUrlFromTaskId(taskId: string): string | undefined {
   if (!taskId.startsWith('__sync_image_url__:')) return undefined;
   return taskId.slice('__sync_image_url__:'.length);
-}
-
-function extractFirstImageUrlFromContent(
-  content: Array<{ type?: string; image?: string }> | undefined
-): string | undefined {
-  if (!Array.isArray(content)) return undefined;
-  for (const item of content) {
-    if (item?.image && (!item?.type || item.type === 'image')) return item.image;
-  }
-  return undefined;
 }
 
 export async function submitTaskDashScope(
@@ -76,7 +67,7 @@ export async function submitTaskDashScope(
   };
 
   if (useSyncMultimodal) {
-    const imageUrl = extractFirstImageUrlFromContent(data?.output?.choices?.[0]?.message?.content);
+    const imageUrl = extractFirstImageUrlFromDashScopeChoicesRoot(data);
     if (!imageUrl) throw new Error('T2I sync call succeeded but no image URL in response');
     return encodeSyncImageUrlAsTaskId(imageUrl);
   }
@@ -116,7 +107,7 @@ export async function pollForImageUrlDashScope(
       throw new Error(`T2I task failed: ${msg}`);
     }
     if (status === 'SUCCEEDED') {
-      const imageUrl = extractFirstImageUrlFromContent(taskData?.output?.choices?.[0]?.message?.content);
+      const imageUrl = extractFirstImageUrlFromDashScopeChoicesRoot(taskData);
       if (imageUrl) return imageUrl;
       throw new Error('T2I task succeeded but no image URL in response');
     }
