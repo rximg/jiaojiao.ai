@@ -3,49 +3,13 @@
  */
 import type { VLAIConfig } from '#backend/domain/inference/types.js';
 import { SyncInferenceBase } from '../../bases/sync-inference-base.js';
-import { throwIfResponseNotOk } from '../../http-fetch-helpers.js';
+import { fetchVlChatCompletionsContent, type VlChatCompletionsParams } from '../openai-compatible/vl-chat-completions.js';
 import type { VLPortInput } from '../../port-types.js';
 
-export interface CallVLParams {
-  cfg: VLAIConfig;
-  dataUrl: string;
-  prompt: string;
-}
+export type CallVLParams = VlChatCompletionsParams;
 
-/** 调用通义多模态接口，返回助手回复文本（应为 JSON 数组字符串） */
 export async function callVLDashScope(params: CallVLParams): Promise<string> {
-  const { cfg, dataUrl, prompt } = params;
-  const chatUrl = cfg.endpoint.replace(/\/$/, '') + '/chat/completions';
-  const body = {
-    model: cfg.model,
-    messages: [
-      {
-        role: 'user' as const,
-        content: [
-          { type: 'image_url' as const, image_url: { url: dataUrl } },
-          { type: 'text' as const, text: prompt },
-        ],
-      },
-    ],
-  };
-
-  const res = await fetch(chatUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${cfg.apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
-
-  await throwIfResponseNotOk(res, 'VL API failed');
-
-  const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  const content = data?.choices?.[0]?.message?.content;
-  if (content == null || typeof content !== 'string') {
-    throw new Error('VL API did not return message content');
-  }
-  return content;
+  return fetchVlChatCompletionsContent(params);
 }
 
 /** 通义 VL 同步端口适配器 */
