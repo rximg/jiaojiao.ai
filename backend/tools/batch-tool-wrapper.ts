@@ -105,7 +105,7 @@ function create(_config: ToolConfig, context: ToolContext) {
         items: z
           .array(
             z.object({
-              params: z.record(z.unknown()).describe('传给该工具的参数对象'),
+              params: z.record(z.string(), z.unknown()).describe('传给该工具的参数对象'),
               label: z.string().optional().describe('在进度条中显示的标签（如角色名、台词摘要）'),
             })
           )

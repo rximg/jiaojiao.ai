@@ -9,6 +9,7 @@
     "dev": "vite",
     "build": "tsc && vite build && electron-builder",
     "preview": "vite preview",
+    "clean:electron-out": "node -e \"['dist-electron','node_modules/.vite'].forEach(p=>{try{require('fs').rmSync(p,{recursive:true,force:true})}catch(e){}})\"",
     "electron:dev": "vite",
     "electron:build": "node -e \"try{require('fs').rmSync('release',{recursive:true,force:true});}catch(e){}\" && tsc && vite build && electron-builder",
     "electron:build:verbose": "node -e \"try{require('fs').rmSync('release',{recursive:true,force:true});}catch(e){}\" && tsc && vite build && cross-env DEBUG=electron-builder* electron-builder",
@@ -22,6 +23,7 @@
     "test:tools:zhipu": "npx cross-env TEST_API_PROVIDER=zhipu vitest run tests/integration/tools",
     "test:tools:dashscope": "npx cross-env TEST_API_PROVIDER=dashscope vitest run tests/integration/tools",
     "test:agent": "vitest run tests/integration/agent",
+    "test:agent:subagent": "vitest run tests/integration/agent/subagent-prompt-generator.integration.test.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
     "gen-icons": "node scripts/gen-icons.mjs",
@@ -59,7 +61,7 @@
     "tailwind-merge": "^2.6.0",
     "use-stick-to-bottom": "^1.1.1",
     "uuid": "^9.0.1",
-    "zod": "^3.23.8"
+    "zod": "4.4.2"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
@@ -95,6 +97,7 @@
     "@langchain/core": "^1.1.33",
     "langchain": "1.2.34",
     "@langchain/openai": "^1.2.8",
-    "@langchain/langgraph": "^1.1.4"
+    "@langchain/langgraph": "^1.1.4",
+    "zod": "4.4.2"
   }
 }
