@@ -109,42 +109,85 @@ function isAsyncUnsupportedError(error: unknown): boolean {
   return /does not support asynchronous calls/i.test(message);
 }
 
+function throwIfDashScopeEditImageApiCode(data: DashScopeEditImageResponse): void {
+  if (data?.code) {
+    throw new Error(`Edit image API error: ${data.code} ${data.message ?? ''}`.trim());
+  }
+}
+
+type EditImagePostDebugStages = {
+  request: string;
+  response: string;
+  /** 同步路径解析后打全量 JSON；异步 submit 不传 */
+  json?: string;
+  httpErrorLabel: string;
+};
+
+/** POST multimodal-generation + HTTP 校验 + `code` 字段校验（async 仅多 `X-DashScope-Async`） */
+async function postEditImageDashScopeParsed(
+  cfg: ImageEditAIConfig,
+  endpoint: string,
+  body: ReturnType<typeof buildEditImageRequest>['body'],
+  asyncMode: boolean,
+  stages: EditImagePostDebugStages,
+  requestLogPayload: Record<string, unknown>
+): Promise<DashScopeEditImageResponse> {
+  logEditImageDebug(stages.request, requestLogPayload);
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${cfg.apiKey}`,
+  };
+  if (asyncMode) {
+    headers['X-DashScope-Async'] = 'enable';
+  }
+
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  });
+
+  logEditImageDebug(stages.response, {
+    status: res.status,
+    statusText: res.statusText,
+  });
+
+  await throwIfResponseNotOk(res, stages.httpErrorLabel);
+
+  const data = (await res.json()) as DashScopeEditImageResponse;
+  if (stages.json) {
+    logEditImageDebug(stages.json, { data });
+  }
+  throwIfDashScopeEditImageApiCode(data);
+  return data;
+}
+
 export async function submitEditImageDashScope(
   cfg: ImageEditAIConfig,
   input: EditImagePortInput
 ): Promise<string> {
   const { endpoint, resolvedModel, body } = buildEditImageRequest(cfg, input);
-  logEditImageDebug('submit', {
-    provider: cfg.provider,
+  const data = await postEditImageDashScopeParsed(
+    cfg,
     endpoint,
-    cfgModel: cfg.model,
-    inputModel: input.model,
-    resolvedModel,
-    imageCount: input.imageDataUrls.length,
-    parameters: body.parameters,
-  });
-
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${cfg.apiKey}`,
-      'X-DashScope-Async': 'enable',
+    body,
+    true,
+    {
+      request: 'submit',
+      response: 'submit-response',
+      httpErrorLabel: 'Edit image submit failed',
     },
-    body: JSON.stringify(body),
-  });
-
-  logEditImageDebug('submit-response', {
-    status: res.status,
-    statusText: res.statusText,
-  });
-
-  await throwIfResponseNotOk(res, 'Edit image submit failed');
-
-  const data = (await res.json()) as DashScopeEditImageResponse;
-  if (data?.code) {
-    throw new Error(`Edit image API error: ${data.code} ${data.message ?? ''}`.trim());
-  }
+    {
+      provider: cfg.provider,
+      endpoint,
+      cfgModel: cfg.model,
+      inputModel: input.model,
+      resolvedModel,
+      imageCount: input.imageDataUrls.length,
+      parameters: body.parameters,
+    }
+  );
 
   const taskId = data?.output?.task_id;
   if (!taskId) {
@@ -183,9 +226,7 @@ export async function pollEditImageDashScope(
     await throwIfResponseNotOk(res, 'Edit image poll failed');
 
     const data = (await res.json()) as DashScopeEditImageResponse;
-    if (data?.code) {
-      throw new Error(`Edit image API error: ${data.code} ${data.message ?? ''}`.trim());
-    }
+    throwIfDashScopeEditImageApiCode(data);
 
     const status = data?.output?.task_status;
     if (status === 'FAILED') {
@@ -209,38 +250,27 @@ async function callEditImageDashScopeSync(
   input: EditImagePortInput
 ): Promise<DashScopeEditImageOutput> {
   const { endpoint, resolvedModel, body } = buildEditImageRequest(cfg, input);
-
-  logEditImageDebug('submit-sync', {
-    provider: cfg.provider,
+  const data = await postEditImageDashScopeParsed(
+    cfg,
     endpoint,
-    cfgModel: cfg.model,
-    inputModel: input.model,
-    resolvedModel,
-    imageCount: input.imageDataUrls.length,
-    parameters: body.parameters,
-  });
-
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${cfg.apiKey}`,
+    body,
+    false,
+    {
+      request: 'submit-sync',
+      response: 'submit-sync-response',
+      json: 'submit-sync-json',
+      httpErrorLabel: 'Edit image sync call failed',
     },
-    body: JSON.stringify(body),
-  });
-
-  logEditImageDebug('submit-sync-response', {
-    status: res.status,
-    statusText: res.statusText,
-  });
-
-  await throwIfResponseNotOk(res, 'Edit image sync call failed');
-
-  const data = (await res.json()) as DashScopeEditImageResponse;
-  logEditImageDebug('submit-sync-json', { data });
-  if (data?.code) {
-    throw new Error(`Edit image API error: ${data.code} ${data.message ?? ''}`.trim());
-  }
+    {
+      provider: cfg.provider,
+      endpoint,
+      cfgModel: cfg.model,
+      inputModel: input.model,
+      resolvedModel,
+      imageCount: input.imageDataUrls.length,
+      parameters: body.parameters,
+    }
+  );
 
   const imageUrl = extractFirstImageUrlFromDashScopeChoicesRoot(data);
   if (!imageUrl) {
