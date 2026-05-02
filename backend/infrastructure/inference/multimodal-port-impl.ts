@@ -150,6 +150,20 @@ export class MultimodalPortImpl implements MultimodalPort {
 
   constructor(private readonly deps: MultimodalPortImplDeps) {}
 
+  private async downloadRemoteImageBuffer(kind: 'T2I' | 'ImageEdit', imageUrl: string): Promise<Buffer> {
+    let imageRes: Response;
+    try {
+      imageRes = await fetch(imageUrl);
+    } catch (error) {
+      throw formatDownloadFetchError(kind, imageUrl, error);
+    }
+    if (!imageRes.ok) {
+      const label = kind === 'T2I' ? 'T2I image download failed' : 'Edited image download failed';
+      throw new Error(`${label}: ${imageRes.status} ${imageRes.statusText}`);
+    }
+    return Buffer.from(await imageRes.arrayBuffer());
+  }
+
   async generateImage(params: GenerateImageParams): Promise<GenerateImageResult> {
     const sessionId = params.sessionId ?? DEFAULT_SESSION_ID;
     const promptStr = await resolvePromptInput(
@@ -219,16 +233,7 @@ export class MultimodalPortImpl implements MultimodalPort {
     const taskId = await this.deps.t2iPort.submit({ prompt, parameters });
     const imageUrl = await this.deps.t2iPort.poll(taskId);
 
-    let imageRes: Response;
-    try {
-      imageRes = await fetch(imageUrl);
-    } catch (error) {
-      throw formatDownloadFetchError('T2I', imageUrl, error);
-    }
-    if (!imageRes.ok) {
-      throw new Error(`T2I image download failed: ${imageRes.status} ${imageRes.statusText}`);
-    }
-    const buffer = Buffer.from(await imageRes.arrayBuffer());
+    const buffer = await this.downloadRemoteImageBuffer('T2I', imageUrl);
     const relativePath = resolveImageOutputRelativePath(imageName, 'images', 'image');
     await this.deps.artifactRepo.write(sessionId, relativePath, buffer);
     const imagePath = this.deps.artifactRepo.resolvePath(sessionId, relativePath);
@@ -330,16 +335,7 @@ export class MultimodalPortImpl implements MultimodalPort {
           },
         });
 
-        let imageRes: Response;
-        try {
-          imageRes = await fetch(result.imageUrl);
-        } catch (error) {
-          throw formatDownloadFetchError('ImageEdit', result.imageUrl, error);
-        }
-        if (!imageRes.ok) {
-          throw new Error(`Edited image download failed: ${imageRes.status} ${imageRes.statusText}`);
-        }
-        const buffer = Buffer.from(await imageRes.arrayBuffer());
+        const buffer = await this.downloadRemoteImageBuffer('ImageEdit', result.imageUrl);
         const relativePath = resolveImageOutputRelativePath(params.imageName, 'images', 'scene');
         await this.deps.artifactRepo.write(sessionId, relativePath, buffer);
         const imagePath = this.deps.artifactRepo.resolvePath(sessionId, relativePath);
