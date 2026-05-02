@@ -80,12 +80,7 @@ export function extractJsonArrayTextForVlScriptModel(raw: string): string {
 }
 
 export function parseVlScriptLinesFromModelContent(content: string): ScriptLine[] {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(extractJsonArrayTextForVlScriptModel(content));
-  } catch {
-    throw new Error('VL script response is not valid JSON');
-  }
+  const raw: unknown = JSON.parse(extractJsonArrayTextForVlScriptModel(content));
   if (!Array.isArray(raw)) {
     throw new Error('VL script response must be a JSON array');
   }
