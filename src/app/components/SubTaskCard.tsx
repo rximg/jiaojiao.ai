@@ -49,7 +49,11 @@ function ResultRenderer({
     );
   }
 
-  if (toolName === 'synthesize_speech_single' || toolName === 'synthesize_speech') {
+  if (
+    toolName === 'synthesize_speech_single' ||
+    toolName === 'synthesize_speech' ||
+    toolName === 'generate_audio'
+  ) {
     const path = ((data.audioPath ?? data.path ?? '') as string) || '';
     if (!path) return null;
     return <AudioBlock path={path} text={data.text as string | undefined} />;

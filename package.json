@@ -28,7 +28,8 @@
     "format": "prettier --write .",
     "gen-icons": "node scripts/gen-icons.mjs",
     "gen-favicon": "node scripts/gen-favicon.mjs",
-    "backup:userdata": "powershell -ExecutionPolicy Bypass -File scripts/backup-userdata-jiaojiao.ps1"
+    "backup:userdata": "powershell -ExecutionPolicy Bypass -File scripts/backup-userdata-jiaojiao.ps1",
+    "debug:vl-raw": "npx tsx --tsconfig tsconfig.json scripts/debug-vl-raw.ts"
   },
   "dependencies": {
     "@langchain/core": "^1.1.33",

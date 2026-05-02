@@ -15,7 +15,6 @@ import type {
   SynthesizeSpeechResult,
   GenerateScriptFromImageParams,
   GenerateScriptFromImageResult,
-  ScriptLine,
   T2IAIConfig,
   ImageEditAIConfig,
   TTSAIConfig,
@@ -25,6 +24,7 @@ import type { ArtifactRepository } from '#backend/domain/workspace/repositories/
 import { traceAiRun } from '../../agent/langsmith-trace.js';
 import { pcmToMp3, pcmToWav } from '../../services/audio-format.js';
 import type { VLPort, T2IPort, EditImagePort, TTSSyncPort } from './create-ports.js';
+import { parseVlScriptLinesFromModelContent } from './vl-script-response.js';
 
 const DEFAULT_SESSION_ID = 'default';
 
@@ -42,30 +42,6 @@ export interface MultimodalPortImplDeps {
   ttsCfg: TTSAIConfig;
   artifactRepo: ArtifactRepository;
   getWorkspaceRoot: () => string;
-}
-
-function parseAndValidateLines(content: string): ScriptLine[] {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(content);
-  } catch {
-    throw new Error('VL script response is not valid JSON');
-  }
-  if (!Array.isArray(raw)) {
-    throw new Error('VL script response must be a JSON array');
-  }
-  const lines: ScriptLine[] = [];
-  for (let i = 0; i < raw.length; i++) {
-    const item = raw[i];
-    if (item == null || typeof item !== 'object') {
-      throw new Error(`VL script item at index ${i} must be an object`);
-    }
-    const text = typeof item.text === 'string' ? item.text : String(item.text ?? '');
-    const x = typeof item.x === 'number' ? item.x : Number(item.x) || 0;
-    const y = typeof item.y === 'number' ? item.y : Number(item.y) || 0;
-    lines.push({ text, x, y });
-  }
-  return lines;
 }
 
 function resolveImageAbsolutePath(
@@ -507,7 +483,7 @@ export class MultimodalPortImpl implements MultimodalPort {
       prompt: fullPrompt,
     });
 
-    const lines = parseAndValidateLines(content);
+    const lines = parseVlScriptLinesFromModelContent(content);
     const imageBasename = path.basename(absolutePath, path.extname(absolutePath));
     const scriptRelativePath = `lines/${imageBasename}.json`;
     await this.deps.artifactRepo.write(

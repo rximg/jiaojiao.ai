@@ -8,6 +8,7 @@ import sharp from 'sharp';
 import { getAIConfig } from '../../../backend/infrastructure/inference/ai-config.js';
 import { callVLZhipu } from '../../../backend/infrastructure/inference/adapters/vl/zhipu.js';
 import { callVLDashScope } from '../../../backend/infrastructure/inference/adapters/vl/dashscope.js';
+import { parseVlScriptLinesFromModelContent } from '../../../backend/infrastructure/inference/vl-script-response.js';
 import { loadConfig, lastLoadedConfigPath } from '../../../backend/app-config';
 import type { VLAIConfig } from '#backend/domain/inference/types.js';
 
@@ -44,6 +45,18 @@ async function createMinimalTestPng(): Promise<Buffer> {
   })
     .png()
     .toBuffer();
+}
+
+/** 稍大图 + 高对比色块，便于 VL 产出非空台词列表 */
+async function createVlScriptTestPng(): Promise<Buffer> {
+  const w = 128;
+  const h = 96;
+  const svg = `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100%" height="100%" fill="#f0f0f0"/>
+    <circle cx="32" cy="48" r="20" fill="#e63946"/>
+    <rect x="72" y="28" width="40" height="40" fill="#457b9d"/>
+  </svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
 describe('Inference / VL', () => {
@@ -86,4 +99,21 @@ describe('Inference / VL', () => {
     expect(typeof content).toBe('string');
     expect(content.length).toBeGreaterThan(0);
   }, 60_000);
+
+  it('dashscope qwen3.6-flash: VL 台词 JSON 可被解析（与 generate_script 一致）', async (ctx) => {
+    if (!hasKey) ctx.skip();
+    const base = (await getAIConfig('vl')) as VLAIConfig;
+    if (base.provider !== 'dashscope') ctx.skip();
+    const cfg: VLAIConfig = { ...base, model: 'qwen3.6-flash' };
+    const buf = await createVlScriptTestPng();
+    const dataUrl = `data:image/png;base64,${buf.toString('base64')}`;
+    const prompt =
+      '你是绘本台词设计师。图中有红圆与蓝方块等明显元素。' +
+      '请输出恰好一个 JSON 数组（不要用 Markdown 代码块），至少 2 个对象；每个对象含非空 text 与数字坐标 x、y。' +
+      '格式示例：[{"text":"红色圆形像在打招呼","x":32,"y":48},{"text":"蓝色方块稳稳站着","x":92,"y":48}]';
+    const content = await callVLDashScope({ cfg, dataUrl, prompt });
+    const lines = parseVlScriptLinesFromModelContent(content);
+    expect(lines.length, `raw=\n${content.slice(0, 900)}`).toBeGreaterThan(0);
+    expect(lines.some((l) => l.text.trim().length > 0)).toBe(true);
+  }, 90_000);
 });

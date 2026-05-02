@@ -7,6 +7,7 @@ const BATCH_TITLES: Record<string, string> = {
   generate_image: '批量生成图片',
   edit_image: '批量编辑图片',
   synthesize_speech_single: '批量合成语音',
+  generate_audio: '批量生成语音',
 };
 
 interface BatchWrapperProps {
