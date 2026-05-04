@@ -2,6 +2,16 @@ import path from 'path';
 import { promises as fs } from 'fs';
 import sharp from 'sharp';
 import { DEFAULT_SESSION_ID, getWorkspaceFilesystem } from './fs.js';
+import {
+  captionBackgroundFillCss,
+  captionBorderForSvg,
+  parseCaptionBoxBackgroundId,
+  parseCaptionBoxBorderId,
+  type CaptionBoxBackgroundId,
+  type CaptionBoxBorderId,
+} from './caption-overlay-style-shared.js';
+
+export type { CaptionBoxBackgroundId, CaptionBoxBorderId };
 
 export interface CaptionOverlayStyleParams {
   captionTextFontSizePx: number;
@@ -11,9 +21,11 @@ export interface CaptionOverlayStyleParams {
   fontFamily: string;
   textStrokeWidth: number;
   textStrokeColor: string;
-  /** 0–1，字幕框圆角底衬 */
+  /** 0–1，仅对「深色磨砂」底衬生效 */
   boxBackgroundOpacity: number;
   boxPaddingPx: number;
+  captionBoxBackground: CaptionBoxBackgroundId;
+  captionBoxBorder: CaptionBoxBorderId;
 }
 
 export interface CaptionOverlayBoxInput {
@@ -33,8 +45,10 @@ export const DEFAULT_CAPTION_OVERLAY_STYLE: CaptionOverlayStyleParams = {
   fontFamily: '"Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif',
   textStrokeWidth: 0.6,
   textStrokeColor: 'rgba(0,0,0,0.35)',
-  boxBackgroundOpacity: 0.75,
+  boxBackgroundOpacity: 0.72,
   boxPaddingPx: 8,
+  captionBoxBackground: 'light_frosted',
+  captionBoxBorder: 'white_soft',
 };
 
 function escapeXml(s: string): string {
@@ -60,13 +74,15 @@ function buildBoxFragment(box: CaptionOverlayBoxInput, style: CaptionOverlayStyl
   const maxX = x + w - pad;
   const fragments: string[] = [];
 
-  const bgFill =
-    style.boxBackgroundOpacity > 0
-      ? `fill="rgba(20,20,20,${style.boxBackgroundOpacity})"`
-      : 'fill="none"';
+  const bgId = parseCaptionBoxBackgroundId(style.captionBoxBackground);
+  const borderId = parseCaptionBoxBorderId(style.captionBoxBorder);
+  const fillRaw = captionBackgroundFillCss(bgId, style.boxBackgroundOpacity);
+  const fillAttr = fillRaw === 'transparent' ? 'fill="none"' : `fill="${escapeXml(fillRaw)}"`;
+  const b = captionBorderForSvg(borderId);
+  const dashAttr = b.strokeDasharray ? ` stroke-dasharray="${b.strokeDasharray}"` : '';
 
   fragments.push(
-    `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" ry="10" ${bgFill} stroke="rgba(255,255,255,0.35)" stroke-width="1" />`
+    `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" ry="10" ${fillAttr} stroke="${escapeXml(b.stroke)}" stroke-width="${b.strokeWidth}"${dashAttr} />`
   );
 
   for (const it of items) {

@@ -66,7 +66,7 @@ backend/
 ├── domain/                         # 领域层（零外部依赖）
 │   ├── index.ts
 │   ├── inference/                  # 推理端口与类型
-│   │   ├── ports/                  # SyncInferencePort、AsyncInferencePort、MultimodalPort、BatchInferencePort
+│   │   ├── ports/                  # SyncInferencePort、AsyncInferencePort、MultimodalPort
 │   │   ├── value-objects/          # PromptInput、content-input
 │   │   ├── types.ts                # 所有 AI 能力的参数/结果类型
 │   │   └── index.ts
@@ -130,8 +130,6 @@ backend/
 │   ├── ai_models.json              # 各 provider 下 llm/vl/tts/t2i 的 endpoint、model
 │   ├── hitl-config.ts
 │   ├── workspace-config.ts
-│   ├── log-config.ts
-│   ├── feature-flags.ts
 │   ├── skills/                     # Skill-First 案例配置（index.yaml + <skill_name>/config.yaml + SKILL.md）
 │   ├── sub_agents/
 │   │   └── prompt_gen.yaml         # 提示词生成子代理

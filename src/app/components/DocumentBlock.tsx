@@ -32,19 +32,21 @@ export default function DocumentBlock({ pathOrContent, title }: DocumentBlockPro
         <span className="truncate">{displayTitle}</span>
       </button>
       {expanded && (
-        <div className="relative px-3 pb-3">
+        <div className="px-3 pb-3 space-y-2">
+          <div className="flex justify-end">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 shrink-0 text-xs"
+              onClick={handleCopy}
+            >
+              <Copy className="h-3.5 w-3.5 mr-1" />
+              {copied ? '已复制' : '复制'}
+            </Button>
+          </div>
           <pre className="text-xs whitespace-pre-wrap break-words max-h-48 overflow-auto rounded bg-background/80 p-3 border border-border/50 font-sans">
             {pathOrContent}
           </pre>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="absolute top-1 right-1 h-7 text-xs"
-            onClick={handleCopy}
-          >
-            <Copy className="h-3.5 w-3.5 mr-1" />
-            {copied ? '已复制' : '复制'}
-          </Button>
         </div>
       )}
     </div>

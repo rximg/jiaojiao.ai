@@ -6,6 +6,10 @@ import MarkdownDocumentBlock from './MarkdownDocumentBlock';
 import ImageBlock from './ImageBlock';
 import EditableDocumentBlock from './EditableDocumentBlock';
 import ImageWithBoundingBoxes from './ImageWithBoundingBoxes';
+import {
+  parseCaptionBoxBackgroundId,
+  parseCaptionBoxBorderId,
+} from '#backend/services/caption-overlay-style-shared.js';
 import ImageCaptionOverlayEditor, {
   DEFAULT_CAPTION_OVERLAY_EDITOR_STYLE,
   type CaptionOverlayBoxState,
@@ -233,7 +237,14 @@ export default function HitlConfirmBlock({ request, sessionId, onContinue, onCan
       payload.captionStyle && typeof payload.captionStyle === 'object'
         ? (payload.captionStyle as Partial<CaptionOverlayEditorStyleState>)
         : {};
-    setCaptionOverlayStyle({ ...DEFAULT_CAPTION_OVERLAY_EDITOR_STYLE, ...st });
+    setCaptionOverlayStyle({
+      ...DEFAULT_CAPTION_OVERLAY_EDITOR_STYLE,
+      ...st,
+      captionBoxBackground: parseCaptionBoxBackgroundId(
+        (st as { captionBoxBackground?: unknown }).captionBoxBackground
+      ),
+      captionBoxBorder: parseCaptionBoxBorderId((st as { captionBoxBorder?: unknown }).captionBoxBorder),
+    });
   }, [resolved, request.actionType, payload.captionBoxes, payload.captionStyle]);
 
   useEffect(() => {
@@ -434,7 +445,6 @@ export default function HitlConfirmBlock({ request, sessionId, onContinue, onCan
       return (
         <ImageCaptionOverlayEditor
           imagePath={imagePath}
-          sessionId={sessionId}
           boxes={captionOverlayBoxes}
           style={captionOverlayStyle}
           allowEditCaptionText={allowEdit}

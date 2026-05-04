@@ -1,4 +1,13 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, type CSSProperties } from 'react';
+import {
+  CAPTION_BOX_BACKGROUND_LABELS,
+  CAPTION_BOX_BORDER_LABELS,
+  captionBackgroundFillCss,
+  parseCaptionBoxBackgroundId,
+  parseCaptionBoxBorderId,
+  type CaptionBoxBackgroundId,
+  type CaptionBoxBorderId,
+} from '#backend/services/caption-overlay-style-shared.js';
 
 export interface CaptionOverlayBoxState {
   lineIndex: number;
@@ -20,6 +29,8 @@ export interface CaptionOverlayEditorStyleState {
   textStrokeColor: string;
   boxBackgroundOpacity: number;
   boxPaddingPx: number;
+  captionBoxBackground: CaptionBoxBackgroundId;
+  captionBoxBorder: CaptionBoxBorderId;
 }
 
 export const DEFAULT_CAPTION_OVERLAY_EDITOR_STYLE: CaptionOverlayEditorStyleState = {
@@ -30,15 +41,58 @@ export const DEFAULT_CAPTION_OVERLAY_EDITOR_STYLE: CaptionOverlayEditorStyleStat
   fontFamily: '"Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif',
   textStrokeWidth: 0.6,
   textStrokeColor: 'rgba(0,0,0,0.35)',
-  boxBackgroundOpacity: 0.75,
+  boxBackgroundOpacity: 0.72,
   boxPaddingPx: 8,
+  captionBoxBackground: 'light_frosted',
+  captionBoxBorder: 'white_soft',
 };
+
+/** 与 `caption-overlay-render.buildBoxFragment` 一致的列宽与截断，用于框内实时排版 */
+function visibleCaptionItemsForBox(
+  items: Array<{ char: string; reading: string }>,
+  style: CaptionOverlayEditorStyleState,
+  scale: number,
+  boxWpx: number
+): Array<{ char: string; reading: string }> {
+  if (boxWpx <= 0 || scale <= 0) return [];
+  const pad = style.boxPaddingPx * scale;
+  const textSize = style.captionTextFontSizePx * scale;
+  const rubySize = style.captionRubyFontSizePx * scale;
+  const colGap = 3 * scale;
+  const colW = Math.max(textSize, rubySize) * 0.92;
+  const maxInner = boxWpx - pad;
+  const out: Array<{ char: string; reading: string }> = [];
+  let cursorX = pad;
+  for (const it of items) {
+    if (cursorX + colW > maxInner) break;
+    out.push(it);
+    cursorX += colW + colGap;
+  }
+  return out;
+}
+
+/** 与 SVG 边框预设对应的框内描边（缩放为显示分辨率） */
+function captionInnerFrameStyle(borderId: CaptionBoxBorderId, scale: number): CSSProperties {
+  const sw = Math.max(1, Math.round(scale));
+  switch (borderId) {
+    case 'white_soft':
+      return { boxShadow: `inset 0 0 0 ${sw}px rgba(255,255,255,0.45)` };
+    case 'none':
+      return {};
+    case 'dark_thin':
+      return { boxShadow: `inset 0 0 0 ${sw}px rgba(0,0,0,0.22)` };
+    case 'dashed_white':
+      return {
+        border: `${sw}px dashed rgba(255,255,255,0.5)`,
+        boxSizing: 'border-box',
+      };
+  }
+}
 
 type Corner = 'nw' | 'ne' | 'sw' | 'se';
 
 interface ImageCaptionOverlayEditorProps {
   imagePath: string;
-  sessionId?: string | null;
   boxes: CaptionOverlayBoxState[];
   style: CaptionOverlayEditorStyleState;
   allowEditCaptionText?: boolean;
@@ -49,7 +103,6 @@ interface ImageCaptionOverlayEditorProps {
 
 export default function ImageCaptionOverlayEditor({
   imagePath,
-  sessionId: _sessionId,
   boxes,
   style,
   allowEditCaptionText = false,
@@ -60,6 +113,7 @@ export default function ImageCaptionOverlayEditor({
   const [localBoxes, setLocalBoxes] = useState<CaptionOverlayBoxState[]>(boxes);
   const [localStyle, setLocalStyle] = useState(style);
   const [imgSize, setImgSize] = useState({ w: 1, h: 1 });
+  const [imgDisplayW, setImgDisplayW] = useState(0);
   const imgRef = useRef<HTMLImageElement>(null);
   const latestRef = useRef<CaptionOverlayBoxState[]>(boxes);
   const encodedImagePath = encodeURIComponent(imagePath);
@@ -84,10 +138,27 @@ export default function ImageCaptionOverlayEditor({
     [onBoxesChange, parentLatestRef]
   );
 
-  const handleImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
-    const img = e.currentTarget;
+  const syncImgMetrics = useCallback(() => {
+    const img = imgRef.current;
+    if (!img || img.naturalWidth <= 0) return;
     setImgSize({ w: img.naturalWidth, h: img.naturalHeight });
+    setImgDisplayW(img.clientWidth);
   }, []);
+
+  const handleImageLoad = useCallback(
+    (_e: React.SyntheticEvent<HTMLImageElement>) => {
+      syncImgMetrics();
+    },
+    [syncImgMetrics]
+  );
+
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img) return;
+    const ro = new ResizeObserver(() => syncImgMetrics());
+    ro.observe(img);
+    return () => ro.disconnect();
+  }, [syncImgMetrics, imagePath]);
 
   const pushStyle = useCallback(
     (next: CaptionOverlayEditorStyleState) => {
@@ -219,6 +290,44 @@ export default function ImageCaptionOverlayEditor({
               }
             />
           </label>
+          <label className="flex items-center gap-1">
+            <span className="text-muted-foreground whitespace-nowrap">背景颜色</span>
+            <select
+              className="max-w-[9.5rem] rounded border border-border bg-background px-2 py-0.5 text-xs"
+              value={parseCaptionBoxBackgroundId(localStyle.captionBoxBackground)}
+              onChange={(e) =>
+                pushStyle({
+                  ...localStyle,
+                  captionBoxBackground: parseCaptionBoxBackgroundId(e.target.value),
+                })
+              }
+            >
+              {(Object.keys(CAPTION_BOX_BACKGROUND_LABELS) as CaptionBoxBackgroundId[]).map((id) => (
+                <option key={id} value={id}>
+                  {CAPTION_BOX_BACKGROUND_LABELS[id]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-1">
+            <span className="text-muted-foreground whitespace-nowrap">边框样式</span>
+            <select
+              className="max-w-[9.5rem] rounded border border-border bg-background px-2 py-0.5 text-xs"
+              value={parseCaptionBoxBorderId(localStyle.captionBoxBorder)}
+              onChange={(e) =>
+                pushStyle({
+                  ...localStyle,
+                  captionBoxBorder: parseCaptionBoxBorderId(e.target.value),
+                })
+              }
+            >
+              {(Object.keys(CAPTION_BOX_BORDER_LABELS) as CaptionBoxBorderId[]).map((id) => (
+                <option key={id} value={id}>
+                  {CAPTION_BOX_BORDER_LABELS[id]}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
         {allowEditCaptionText && (
           <p className="text-xs text-amber-700 dark:text-amber-400">
@@ -244,12 +353,34 @@ export default function ImageCaptionOverlayEditor({
               const topPct = (box.y / imgSize.h) * 100;
               const wPct = (box.w / imgSize.w) * 100;
               const hPct = (box.h / imgSize.h) * 100;
+              const scale = imgDisplayW > 0 ? imgDisplayW / imgSize.w : 1;
+              const boxWpx = imgDisplayW > 0 ? (box.w / imgSize.w) * imgDisplayW : 0;
+              const visibleItems = visibleCaptionItemsForBox(box.items, localStyle, scale, boxWpx);
+              const pad = localStyle.boxPaddingPx * scale;
+              const textSizePx = localStyle.captionTextFontSizePx * scale;
+              const rubySizePx = localStyle.captionRubyFontSizePx * scale;
+              const colGapPx = 3 * scale;
+              const rowGapPx = 4 * scale;
+              const colWpx = Math.max(textSizePx, rubySizePx) * 0.92;
+              const radiusPx = 10 * scale;
+              const strokePx =
+                localStyle.textStrokeWidth > 0 ? Math.max(0.35, localStyle.textStrokeWidth * scale) : 0;
+              const strokeStyle =
+                strokePx > 0
+                  ? {
+                      WebkitTextStroke: `${strokePx}px ${localStyle.textStrokeColor}`,
+                    }
+                  : {};
+              const bgId = parseCaptionBoxBackgroundId(localStyle.captionBoxBackground);
+              const borderId = parseCaptionBoxBorderId(localStyle.captionBoxBorder);
+              const fillCss = captionBackgroundFillCss(bgId, localStyle.boxBackgroundOpacity);
+              const frameStyle = captionInnerFrameStyle(borderId, scale);
               const handleCls =
                 'absolute w-2.5 h-2.5 bg-primary border border-background rounded-sm pointer-events-auto z-20';
               return (
                 <div
                   key={box.lineIndex}
-                  className="absolute border-2 border-dashed border-primary/90 bg-primary/5 pointer-events-auto z-10"
+                  className="absolute border-2 border-dashed border-primary/90 bg-transparent pointer-events-auto z-10"
                   style={{
                     left: `${leftPct}%`,
                     top: `${topPct}%`,
@@ -258,6 +389,58 @@ export default function ImageCaptionOverlayEditor({
                   }}
                   onMouseDown={(e) => startMoveBox(index, e)}
                 >
+                  <div
+                    className="pointer-events-none absolute inset-0 z-0 flex flex-row items-start overflow-hidden"
+                    style={{
+                      padding: pad,
+                      gap: colGapPx,
+                      borderRadius: radiusPx,
+                      ...frameStyle,
+                    }}
+                  >
+                    {fillCss !== 'transparent' ? (
+                      <div
+                        className="absolute inset-0 -z-10"
+                        style={{
+                          borderRadius: radiusPx,
+                          backgroundColor: fillCss,
+                        }}
+                      />
+                    ) : null}
+                    {visibleItems.map((it, j) => (
+                      <div
+                        key={`${box.lineIndex}-${j}-${it.char}`}
+                        className="flex flex-col items-center shrink-0"
+                        style={{ width: colWpx }}
+                      >
+                        <span
+                          className="text-center"
+                          style={{
+                            fontSize: rubySizePx,
+                            lineHeight: 1,
+                            color: localStyle.captionRubyColor,
+                            fontFamily: localStyle.fontFamily,
+                            ...strokeStyle,
+                          }}
+                        >
+                          {it.reading || '\u00a0'}
+                        </span>
+                        <span
+                          className="text-center"
+                          style={{
+                            fontSize: textSizePx,
+                            lineHeight: 1,
+                            marginTop: rowGapPx,
+                            color: localStyle.captionTextColor,
+                            fontFamily: localStyle.fontFamily,
+                            ...strokeStyle,
+                          }}
+                        >
+                          {it.char}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                   <button
                     type="button"
                     aria-label="resize-nw"
@@ -316,7 +499,7 @@ export default function ImageCaptionOverlayEditor({
         ))}
       </div>
       <div className="px-2 py-1 text-xs text-muted-foreground border-t border-border/50">
-        拖拽虚线框移动位置；拖动四角缩放手柄调整大小。注音行为只读。
+        框内效果与确认后导出一致。拖拽虚线框移动位置；拖动四角缩放手柄调整大小。
       </div>
     </div>
   );
