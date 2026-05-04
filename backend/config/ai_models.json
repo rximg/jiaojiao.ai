@@ -1,9 +1,21 @@
 {
     "dashscope": {
         "llm": {
-            "default": "qwen3.5-plus",
+            "default": "qwen3.6-flash",
             "endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1",
             "models": [
+                {
+                    "id": "qwen3.6-flash",
+                    "label": "通义 Qwen3.6 Flash"
+                },
+                {
+                    "id": "qwen3.6-plus",
+                    "label": "通义 Qwen3.6 Plus"
+                },
+                {
+                    "id": "qwen3.6-flash-2026-04-16",
+                    "label": "通义 Qwen3.6 Flash 2026-04-16"
+                },
                 {
                     "id": "qwen3.5-plus",
                     "label": "通义 Qwen3.5 Plus"

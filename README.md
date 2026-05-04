@@ -28,7 +28,6 @@ app/
 ├── backend/              # 后端（DDD 分层，见 docs/后端软件架构.md）
 │   ├── agent/            # Agent 核心（AgentFactory、ConfigLoader、LangSmith）
 │   ├── application/      # 应用层用例（session CRUD、invoke-agent）
-│   ├── interfaces/http/  # HTTP 接口层（可选，当前未挂载）
 │   ├── domain/           # 领域层（inference、session、workspace、configuration）
 │   ├── infrastructure/   # 基础设施（推理 adapters、仓储实现）
 │   ├── tools/            # 工具实现与 registry（config/tools/*.yaml 驱动）

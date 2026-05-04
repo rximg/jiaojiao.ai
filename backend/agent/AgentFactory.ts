@@ -1,6 +1,14 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { createAgent } from 'langchain';
-import { createDeepAgent, createFilesystemMiddleware, FilesystemBackend, type SubAgent, type CompiledSubAgent } from 'deepagents';
+import {
+  CompositeBackend,
+  createDeepAgent,
+  createFilesystemMiddleware,
+  FilesystemBackend,
+  type BackendProtocol,
+  type SubAgent,
+  type CompiledSubAgent,
+} from 'deepagents';
 import { ConfigLoader, type AgentConfig, type SkillConfig } from './ConfigLoader.js';
 import { getAIConfig } from '../infrastructure/inference/ai-config.js';
 import { createLLMFromAIConfig } from '../infrastructure/inference/adapters/llm/index.js';
@@ -325,15 +333,35 @@ export class AgentFactory {
       skillSources = [this.skillBundle.skillDir];
     }
 
-    // 创建主Agent
-    // 注意：不在主 Agent 中添加 FilesystemMiddleware，因为 prompt_generator 子代理已经通过 createAgent 添加了
-    // 这样可以避免 middleware 重复定义的错误
+    /**
+     * deepagents 默认 backend 为 StateBackend：write_file/edit_file 只进 LangGraph state，不会落盘。
+     * 会话产物（如 story-book 的《绘本方案.md》）必须与 WorkspaceFilesystem 会话目录一致，故显式挂磁盘 backend。
+     * SkillsMiddleware 会用 backend 列目录读 SKILL.md：skill 目录在会话根之外，用 CompositeBackend 单独路由。
+     */
+    const sessionWorkspaceRoot = path.join(workspaceRoot, sessionId || DEFAULT_SESSION_ID);
+    const sessionFsBackend = new FilesystemBackend({
+      rootDir: sessionWorkspaceRoot,
+      virtualMode: true,
+    });
+    let deepAgentBackend: BackendProtocol = sessionFsBackend;
+    if (skillSources && skillSources.length > 0) {
+      const skillDirAbs = path.resolve(this.skillBundle.skillDir);
+      const skillRoutePrefix = skillDirAbs.endsWith(path.sep) ? skillDirAbs : `${skillDirAbs}${path.sep}`;
+      deepAgentBackend = new CompositeBackend(sessionFsBackend, {
+        [skillRoutePrefix]: new FilesystemBackend({
+          rootDir: skillDirAbs,
+          virtualMode: false,
+        }),
+      });
+    }
+
     // @ts-ignore - Type compatibility with deepagents
     const agent = createDeepAgent({
       model: llm as any,
       tools,
       systemPrompt: mainSystemPrompt,
       subagents: subAgents,
+      backend: deepAgentBackend,
       ...(checkpointer ? { checkpointer } : {}),
       ...(skillSources ? { skills: skillSources } : {}),
     });
