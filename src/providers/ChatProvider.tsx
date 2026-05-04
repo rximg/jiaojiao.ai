@@ -10,8 +10,17 @@ interface AgentErrorState {
 interface ChatContextType {
   messages: Message[];
   todos: TodoItem[];
-  /** 当前待确认的 HITL 请求（统一人工确认通道） */
-  pendingHitlRequest: { requestId: string; actionType: string; payload: Record<string, unknown>; timeout: number } | null;
+  /** Live：主进程正在等待 hitl:respond，含消息内 pending 行 id */
+  pendingHitlRequest: {
+    requestId: string;
+    actionType: string;
+    payload: Record<string, unknown>;
+    messageId: string;
+  } | null;
+  /** 更新 pending HITL 消息的草稿（debounce 后写入，随 session 持久化） */
+  updateHitlDraftEdits: (messageId: string, draftEdits: Record<string, unknown>) => void;
+  /** Stale pending：仅本地标为 rejected，不调 hitl:respond */
+  rejectStaleHitl: (messageId: string, reason?: string) => void;
   quotaError: { message: string; error: string } | null;
   agentError: AgentErrorState | null;
   isLoading: boolean;
@@ -34,7 +43,12 @@ const ChatContext = createContext<ChatContextType | undefined>(undefined);
 export function ChatProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [todos, setTodos] = useState<TodoItem[]>([]);
-  const [pendingHitlRequest, setPendingHitlRequest] = useState<{ requestId: string; actionType: string; payload: Record<string, unknown>; timeout: number } | null>(null);
+  const [pendingHitlRequest, setPendingHitlRequest] = useState<{
+    requestId: string;
+    actionType: string;
+    payload: Record<string, unknown>;
+    messageId: string;
+  } | null>(null);
   const [quotaError, setQuotaError] = useState<{ message: string; error: string } | null>(null);
   const [agentError, setAgentError] = useState<AgentErrorState | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -227,9 +241,32 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    const handleHitlConfirm = (data: { requestId: string; actionType: string; payload: Record<string, unknown>; timeout: number }) => {
+    const handleHitlConfirm = (data: { requestId: string; actionType: string; payload: Record<string, unknown> }) => {
       console.log('[renderer] received hitl:confirmRequest:', data);
-      setPendingHitlRequest(data);
+      if (pendingHitlRequestRef.current) {
+        console.warn('[hitl] 忽略并发 confirmRequest：已有未完成的 Live HITL');
+        return;
+      }
+      const messageId = `hitl-pending-${data.requestId}`;
+      const hitlMessage: Message = {
+        id: messageId,
+        role: 'assistant',
+        content: '',
+        timestamp: new Date(),
+        hitlBlock: {
+          requestId: data.requestId,
+          actionType: data.actionType,
+          payload: data.payload,
+          status: 'pending',
+          draftEdits: {},
+        },
+      };
+      setMessages((prev) => {
+        const next = [...prev, hitlMessage];
+        allMessagesRef.current = next;
+        return next;
+      });
+      setPendingHitlRequest({ ...data, messageId });
     };
 
     const handleStepResult = (data: { threadId: string; messageId: string; stepResults: Array<{ type: 'image' | 'audio' | 'document'; payload: Record<string, unknown> }> }) => {
@@ -378,22 +415,30 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   const respondConfirm = useCallback(async (requestId: string, approved: boolean, editedPayload?: Record<string, unknown>, cancelReason?: string) => {
     const pending = pendingHitlRequestRef.current;
-    const finalPayload = approved && editedPayload ? { ...pending?.payload, ...editedPayload } : pending?.payload ?? {};
-    if (pending && pending.requestId === requestId) {
-      const hitlMessage: Message = {
-        id: `hitl-${requestId}`,
-        role: 'assistant',
-        content: '',
-        timestamp: new Date(),
-        hitlBlock: {
-          requestId: pending.requestId,
-          actionType: pending.actionType,
-          payload: finalPayload,
-          approved,
-        },
-      };
-      setMessages((prev) => [...prev, hitlMessage]);
-      allMessagesRef.current = [...allMessagesRef.current, hitlMessage];
+    const basePayload = pending?.payload ?? {};
+    const finalPayload =
+      approved && editedPayload ? { ...basePayload, ...editedPayload } : { ...basePayload };
+    const messageId = pending?.messageId;
+    if (pending && pending.requestId === requestId && messageId) {
+      setMessages((prev) => {
+        const next = prev.map((m) => {
+          if (m.id !== messageId || m.hitlBlock?.requestId !== requestId) return m;
+          return {
+            ...m,
+            hitlBlock: {
+              ...m.hitlBlock!,
+              payload: finalPayload,
+              status: approved ? ('approved' as const) : ('rejected' as const),
+              resolvedAt: new Date().toISOString(),
+              draftEdits: undefined,
+              reason: !approved && cancelReason?.trim() ? cancelReason.trim() : undefined,
+              approved: undefined,
+            },
+          };
+        });
+        allMessagesRef.current = next;
+        return next;
+      });
     }
     setPendingHitlRequest(null);
     console.log('[renderer] responding to HITL with:', requestId, approved, editedPayload ? '(with edited payload)' : '', cancelReason ? '(cancel reason)' : '');
@@ -409,6 +454,44 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     } else {
       console.warn('[hitl] respond not available in preload');
     }
+  }, []);
+
+  const updateHitlDraftEdits = useCallback((messageId: string, draftEdits: Record<string, unknown>) => {
+    setMessages((prev) => {
+      const next = prev.map((m) => {
+        if (m.id !== messageId || m.hitlBlock?.status !== 'pending') return m;
+        return {
+          ...m,
+          hitlBlock: {
+            ...m.hitlBlock,
+            draftEdits: { ...draftEdits },
+          },
+        };
+      });
+      allMessagesRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const rejectStaleHitl = useCallback((messageId: string, reason?: string) => {
+    setMessages((prev) => {
+      const next = prev.map((m) => {
+        if (m.id !== messageId || m.hitlBlock?.status !== 'pending') return m;
+        return {
+          ...m,
+          hitlBlock: {
+            ...m.hitlBlock,
+            status: 'rejected' as const,
+            resolvedAt: new Date().toISOString(),
+            draftEdits: undefined,
+            reason: reason?.trim() || '暂不执行本次',
+            approved: undefined,
+          },
+        };
+      });
+      allMessagesRef.current = next;
+      return next;
+    });
   }, []);
 
   const dismissQuotaError = useCallback(() => {
@@ -518,9 +601,26 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       }
       setIsLoading(false);
       setAgentError(null);
-      setPendingHitlRequest(null);
       setTtsProgressLive(null);
-      
+
+      const live = pendingHitlRequestRef.current;
+      if (
+        currentSessionId &&
+        currentSessionId !== sessionId &&
+        live &&
+        typeof window.electronAPI.hitl?.respond === 'function'
+      ) {
+        try {
+          await window.electronAPI.hitl.respond(live.requestId, {
+            approved: false,
+            reason: '会话已切换',
+          });
+        } catch (err) {
+          console.warn('[ChatProvider] loadSession: HITL respond when switching session failed:', err);
+        }
+      }
+      setPendingHitlRequest(null);
+
       // 单 session 模式：切换 session 前先关闭旧 runtime
       if (currentSessionId && currentSessionId !== sessionId) {
         try {
@@ -592,7 +692,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       try {
         await window.electronAPI.hitl.respond(pending.requestId, {
           approved: false,
-          reason: 'Cancelled by navigation',
+          reason: '用户返回首页',
         });
       } catch (error) {
         console.warn('[ChatProvider] Failed to cancel pending HITL on reset:', error);
@@ -631,6 +731,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         messages,
         todos,
         pendingHitlRequest,
+        updateHitlDraftEdits,
+        rejectStaleHitl,
         quotaError,
         agentError,
         isLoading,

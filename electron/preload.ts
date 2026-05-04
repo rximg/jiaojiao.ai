@@ -60,7 +60,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   // HITL 人工确认（统一通道）
   hitl: {
-    onConfirmRequest: (callback: (data: { requestId: string; actionType: string; payload: Record<string, unknown>; timeout: number }) => void) => {
+    onConfirmRequest: (callback: (data: { requestId: string; actionType: string; payload: Record<string, unknown> }) => void) => {
       ipcRenderer.on('hitl:confirmRequest', (_event, data) => callback(data));
     },
     respond: (requestId: string, response: { approved: boolean; reason?: string; payload?: Record<string, unknown> }) =>
@@ -133,7 +133,7 @@ declare global {
         stopStream: () => Promise<void>;
       };
       hitl: {
-        onConfirmRequest: (callback: (data: { requestId: string; actionType: string; payload: Record<string, unknown>; timeout: number }) => void) => void;
+        onConfirmRequest: (callback: (data: { requestId: string; actionType: string; payload: Record<string, unknown> }) => void) => void;
         respond: (requestId: string, response: { approved: boolean; reason?: string; payload?: Record<string, unknown> }) => Promise<{ success: boolean }>;
         getPolicy: () => Promise<{ mode: 'auto' | 'allowlist' | 'strict'; allowlist: string[] }>;
         setMode: (mode: 'auto' | 'allowlist' | 'strict') => Promise<{ mode: 'auto' | 'allowlist' | 'strict'; allowlist: string[] }>;

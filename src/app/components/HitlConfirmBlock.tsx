@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Bot } from 'lucide-react';
 import type { HitlBlockRecord } from '@/types/types';
+import { hitlResolvedView } from '@/lib/hitl-block';
 import DocumentBlock from './DocumentBlock';
 import MarkdownDocumentBlock from './MarkdownDocumentBlock';
 import ImageBlock from './ImageBlock';
@@ -20,7 +21,6 @@ export interface PendingHitlRequest {
   requestId: string;
   actionType: string;
   payload: Record<string, unknown>;
-  timeout: number;
 }
 
 const ACTION_TITLE: Record<string, string> = {  'story.plan_review': '确认绘本故事策划稿？',  'ai.batch_tool_call': '批量执行工具？',  'ai.text2image': '生成图像？',
@@ -33,14 +33,23 @@ const ACTION_TITLE: Record<string, string> = {  'story.plan_review': '确认绘�
 };
 
 interface HitlConfirmBlockProps {
-  /** 待确认请求（含 timeout）或已结束记录（含 approved） */
+  /** 待确认请求或已结束记录（含 approved） */
   request: PendingHitlRequest | HitlBlockRecord;
   /** 会话 ID，用于读取 promptFile 内容（仅 pending 时需要） */
   sessionId?: string | null;
+  /** 主进程是否仍在等待本次 respond（false = Stale，仅消息落盘） */
+  isLive?: boolean;
+  /** pending 时 debounce 持久化草稿 */
+  onDraftEditsChange?: (draftEdits: Record<string, unknown>) => void;
   onContinue?: (editedPayload?: Record<string, unknown>) => void;
-  /** 取消时可传入用户输入的修改说明（如 vl_script 的补充要求），会作为 reason 传回后端并出现在错误信息中，便于下次调用时使用 */
   onCancel?: (cancelReason?: string) => void;
   onAddAllowlist?: (actionType: string) => void;
+}
+
+function asHitlRecord(r: PendingHitlRequest | HitlBlockRecord): HitlBlockRecord | undefined {
+  if ('status' in r && r.status) return r as HitlBlockRecord;
+  if ('approved' in r && typeof (r as HitlBlockRecord).approved === 'boolean') return r as HitlBlockRecord;
+  return undefined;
 }
 
 /** 将 "1. xxx\n2. yyy" 解析回 string[] */
@@ -49,18 +58,6 @@ function parseNumberedLines(text: string): string[] {
     .split('\n')
     .map((line) => line.replace(/^\s*\d+\.\s*/, '').trim())
     .filter(Boolean);
-}
-
-/** 将毫秒转为「分:秒」或「剩余 N 秒」 */
-function formatRemaining(ms: number): string {
-  if (ms <= 0) return '0 秒';
-  const totalSeconds = Math.ceil(ms / 1000);
-  if (totalSeconds >= 60) {
-    const m = Math.floor(totalSeconds / 60);
-    const s = totalSeconds % 60;
-    return `${m}:${s.toString().padStart(2, '0')}`;
-  }
-  return `${totalSeconds} 秒`;
 }
 
 const PLAN_REVIEW_PREVIEW_MAX_LINES = 5;
@@ -84,54 +81,18 @@ function planReviewCollapsedExcerpt(full: string): { excerpt: string; needsToggl
   return { excerpt, needsToggle };
 }
 
-export default function HitlConfirmBlock({ request, sessionId, onContinue, onCancel, onAddAllowlist }: HitlConfirmBlockProps) {
-  const resolved = useMemo(() => ('approved' in request ? { approved: request.approved } : undefined), [request]);
+export default function HitlConfirmBlock({
+  request,
+  sessionId,
+  isLive = true,
+  onDraftEditsChange,
+  onContinue,
+  onCancel,
+  onAddAllowlist,
+}: HitlConfirmBlockProps) {
+  const resolved = useMemo(() => hitlResolvedView(asHitlRecord(request)), [request]);
   const title = ACTION_TITLE[request.actionType] ?? '确认操作';
   const payload = request.payload;
-  const timeoutMs = !resolved && 'timeout' in request ? request.timeout : 0;
-
-  // 倒计时：仅 pending 且存在 timeout 时使用，超时由前端控制
-  const [remainingMs, setRemainingMs] = useState(() => timeoutMs);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const hasTriggeredTimeoutRef = useRef(false);
-
-  const stopCountdown = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => {
-    if (resolved || timeoutMs <= 0) return;
-    hasTriggeredTimeoutRef.current = false;
-    setRemainingMs(timeoutMs);
-    intervalRef.current = setInterval(() => {
-      setRemainingMs((prev) => {
-        const next = Math.max(0, prev - 1000);
-        if (next <= 0 && intervalRef.current) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
-        }
-        return next;
-      });
-    }, 1000);
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [resolved, timeoutMs]);
-
-  // 倒计时到 0 时由前端发送取消给后端，只触发一次
-  useEffect(() => {
-    if (resolved || timeoutMs <= 0 || remainingMs > 0 || !onCancel) return;
-    if (hasTriggeredTimeoutRef.current) return;
-    hasTriggeredTimeoutRef.current = true;
-    stopCountdown();
-    onCancel('用户未在限定时间内确认');
-  }, [resolved, timeoutMs, remainingMs, onCancel, stopCountdown]);
 
   // 可编辑内容状态（仅 pending 时使用）
   const [editablePrompt, setEditablePrompt] = useState<string>('');
@@ -155,6 +116,62 @@ export default function HitlConfirmBlock({ request, sessionId, onContinue, onCan
     if (request.actionType !== 'story.plan_review') return;
     setPlanReviewExpanded(true);
   }, [request.actionType, request.requestId]);
+
+  /** 从持久化 draftEdits 恢复编辑态（换 session / 刷新后） */
+  useEffect(() => {
+    if (resolved) return;
+    const rec = asHitlRecord(request);
+    const d = rec?.draftEdits;
+    if (!d || typeof d !== 'object') return;
+    switch (request.actionType) {
+      case 'ai.text2image':
+        if (typeof d.prompt === 'string') setEditablePrompt(d.prompt);
+        break;
+      case 'ai.text2speech':
+        if (Array.isArray(d.texts)) {
+          setEditableTexts(
+            d.texts.map((t: unknown, i: number) => `${i + 1}. ${String(t)}`).join('\n') || ''
+          );
+        }
+        break;
+      case 'ai.vl_script':
+        if (typeof d.userPrompt === 'string') setEditableVlUserPrompt(d.userPrompt);
+        break;
+      case 'ai.vl_caption_regions':
+        if (typeof d.userPrompt === 'string') setEditableVlCaptionUserPrompt(d.userPrompt);
+        break;
+      case 'ai.image_caption_overlay':
+        if (Array.isArray(d.captionBoxes)) {
+          setCaptionOverlayBoxes(d.captionBoxes as CaptionOverlayBoxState[]);
+          captionOverlayBoxesRef.current = d.captionBoxes as CaptionOverlayBoxState[];
+        }
+        if (d.captionStyle && typeof d.captionStyle === 'object') {
+          const st = d.captionStyle as Partial<CaptionOverlayEditorStyleState>;
+          setCaptionOverlayStyle({
+            ...DEFAULT_CAPTION_OVERLAY_EDITOR_STYLE,
+            ...st,
+            captionBoxBackground: parseCaptionBoxBackgroundId(
+              (st as { captionBoxBackground?: unknown }).captionBoxBackground
+            ),
+            captionBoxBorder: parseCaptionBoxBorderId((st as { captionBoxBorder?: unknown }).captionBoxBorder),
+          });
+        }
+        break;
+      case 'story.plan_review':
+        if (typeof d.markdownContent === 'string') setEditableMarkdownContent(d.markdownContent);
+        break;
+      case 'ai.image_label_order':
+        if (Array.isArray(d.annotations)) {
+          setLabelAnnotations(d.annotations as Array<{ number: number; x: number; y: number }>);
+          labelAnnotationsRef.current = d.annotations as Array<{ number: number; x: number; y: number }>;
+        }
+        break;
+      default:
+        break;
+    }
+    // 仅在新的 HITL 条或从磁盘载入时依赖 requestId / actionType
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request.requestId, request.actionType, resolved]);
 
   // 加载 promptFile 内容
   useEffect(() => {
@@ -253,46 +270,44 @@ export default function HitlConfirmBlock({ request, sessionId, onContinue, onCan
     setEditableMarkdownContent(markdownContent);
   }, [resolved, request.actionType, payload.markdownContent]);
 
-  const handleContinue = useCallback(() => {
-    if (!onContinue) return;
-    stopCountdown();
-    if (request.actionType === 'ai.text2image' && !resolved) {
+  const computeEditedPayload = useCallback((): Record<string, unknown> | undefined => {
+    if (resolved) return undefined;
+    if (request.actionType === 'ai.text2image') {
       const trimmed = editablePrompt.trim();
-      if (trimmed && (promptLoadedFromFile || !trimmed.startsWith('将使用文件：'))) {
-        onContinue({ prompt: trimmed });
-      } else {
-        onContinue();
-      }
-    } else if (request.actionType === 'ai.text2speech' && !resolved) {
-      const texts = parseNumberedLines(editableTexts);
-      // 始终传回用户当前编辑的 texts（含空数组），确保后端只用确认后的台词
-      onContinue({ texts });
-    } else if (request.actionType === 'ai.image_label_order' && !resolved) {
+      if (trimmed && (promptLoadedFromFile || !trimmed.startsWith('将使用文件：'))) return { prompt: trimmed };
+      return undefined;
+    }
+    if (request.actionType === 'ai.text2speech') {
+      return { texts: parseNumberedLines(editableTexts) };
+    }
+    if (request.actionType === 'ai.image_label_order') {
       const latest = labelAnnotationsRef.current.length > 0 ? labelAnnotationsRef.current : labelAnnotations;
-      onContinue(latest.length > 0 ? { annotations: latest } : undefined);
-    } else if (request.actionType === 'ai.vl_script' && !resolved) {
+      return latest.length > 0 ? { annotations: latest } : undefined;
+    }
+    if (request.actionType === 'ai.vl_script') {
       const trimmed = editableVlUserPrompt.trim();
-      onContinue(trimmed ? { userPrompt: trimmed } : undefined);
-    } else if (request.actionType === 'ai.vl_caption_regions' && !resolved) {
+      return trimmed ? { userPrompt: trimmed } : undefined;
+    }
+    if (request.actionType === 'ai.vl_caption_regions') {
       const trimmed = editableVlCaptionUserPrompt.trim();
-      onContinue(trimmed ? { userPrompt: trimmed } : undefined);
-    } else if (request.actionType === 'ai.image_caption_overlay' && !resolved) {
+      return trimmed ? { userPrompt: trimmed } : undefined;
+    }
+    if (request.actionType === 'ai.image_caption_overlay') {
       const latest =
         captionOverlayBoxesRef.current.length > 0 ? captionOverlayBoxesRef.current : captionOverlayBoxes;
-      onContinue({
+      return {
         captionBoxes: latest,
         captionStyle: captionOverlayStyle,
-      });
-    } else if (request.actionType === 'story.plan_review' && !resolved) {
-      const trimmed = editableMarkdownContent.trim();
-      onContinue(trimmed ? { markdownContent: trimmed } : undefined);
-    } else {
-      onContinue();
+      };
     }
+    if (request.actionType === 'story.plan_review') {
+      const trimmed = editableMarkdownContent.trim();
+      return trimmed ? { markdownContent: trimmed } : undefined;
+    }
+    return undefined;
   }, [
-    onContinue,
-    request.actionType,
     resolved,
+    request.actionType,
     editablePrompt,
     editableTexts,
     promptLoadedFromFile,
@@ -302,8 +317,42 @@ export default function HitlConfirmBlock({ request, sessionId, onContinue, onCan
     captionOverlayBoxes,
     captionOverlayStyle,
     editableMarkdownContent,
-    stopCountdown,
   ]);
+
+  const handleContinue = useCallback(() => {
+    if (!onContinue) return;
+    if (request.actionType === 'ai.text2image' && !resolved) {
+      const edited = computeEditedPayload();
+      if (edited) onContinue(edited);
+      else onContinue();
+      return;
+    }
+    if (request.actionType === 'ai.text2speech' && !resolved) {
+      onContinue({ texts: parseNumberedLines(editableTexts) });
+      return;
+    }
+    const edited = computeEditedPayload();
+    if (edited && Object.keys(edited).length > 0) onContinue(edited);
+    else onContinue();
+  }, [onContinue, request.actionType, resolved, computeEditedPayload, editableTexts]);
+
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (resolved || !onDraftEditsChange) return;
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = setTimeout(() => {
+      draftTimerRef.current = null;
+      if (request.actionType === 'ai.text2speech' && !resolved) {
+        onDraftEditsChange({ texts: parseNumberedLines(editableTexts) });
+        return;
+      }
+      const d = computeEditedPayload();
+      onDraftEditsChange(d && Object.keys(d).length > 0 ? d : {});
+    }, 450);
+    return () => {
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    };
+  }, [resolved, onDraftEditsChange, computeEditedPayload, request.actionType, editableTexts]);
 
   const renderPayload = () => {
     // ── 批量模式：统一展示子任务列表 ──
@@ -567,10 +616,11 @@ export default function HitlConfirmBlock({ request, sessionId, onContinue, onCan
         <div className="font-medium text-foreground mb-2">{title}</div>
         {!resolved && (
           <div className="mb-3 space-y-2 pb-3 border-b border-border/50">
-            {timeoutMs > 0 && (
-              <div className="text-sm text-muted-foreground">
-                {Math.ceil(timeoutMs / 1000)} 秒内确认，剩余 {formatRemaining(remainingMs)}
-              </div>
+            {!isLive && (
+              <p className="text-xs text-amber-800 dark:text-amber-200 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2">
+                离线待确认：无法自动连回运行中的任务。请在下方输入框发送「继续上一步确认」，由会话 checkpoint
+                重新进入该步骤。
+              </p>
             )}
             <div className="flex flex-wrap gap-2">
               <button
@@ -582,24 +632,16 @@ export default function HitlConfirmBlock({ request, sessionId, onContinue, onCan
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  stopCountdown();
-                  let reason: string | undefined;
-                  if (request.actionType === 'ai.vl_script' && editableVlUserPrompt.trim()) {
-                    reason = editableVlUserPrompt.trim();
-                  } else if (request.actionType === 'ai.vl_caption_regions' && editableVlCaptionUserPrompt.trim()) {
-                    reason = editableVlCaptionUserPrompt.trim();
-                  }
-                  onCancel?.(reason);
-                }}
-                className="px-3 py-1.5 text-sm rounded-xl border border-border hover:bg-muted/80 transition-colors"
+                onClick={() => onCancel?.()}
+                className="px-3 py-1.5 text-sm rounded-xl border border-border text-muted-foreground hover:bg-muted/80 transition-colors"
               >
-                {typeof payload.cancelText === 'string' ? payload.cancelText : '取消执行'}
+                {typeof payload.cancelText === 'string' ? payload.cancelText : '暂不执行本次'}
               </button>
               <button
                 type="button"
                 onClick={() => onAddAllowlist?.(request.actionType)}
                 className="px-3 py-1.5 text-sm rounded-xl border border-border hover:bg-muted/80 transition-colors"
+                title="仅影响后续同类操作，本次仍需确认"
               >
                 加入自动通过列表
               </button>
@@ -608,7 +650,7 @@ export default function HitlConfirmBlock({ request, sessionId, onContinue, onCan
         )}
         {resolved && (
           <div className="mb-3 text-sm opacity-80 pb-3 border-b border-border/50">
-            {resolved.approved ? '已继续' : '已取消'}
+            {resolved.approved ? '已继续' : '未继续'}
           </div>
         )}
         <div className="space-y-2">{renderPayload()}</div>

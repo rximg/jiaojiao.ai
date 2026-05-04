@@ -16,14 +16,7 @@ export interface HITLConfig {
   enabled: boolean;
   defaultRequireApproval: boolean;
   rules: HITLRule[];
-  
-  // 超时设置
-  timeouts: {
-    high: number;    // 高优先级等待时间（毫秒）
-    medium: number;
-    low: number;
-  };
-  
+
   // 通知设置
   notifications: {
     enabled: boolean;
@@ -78,7 +71,7 @@ export const DEFAULT_HITL_CONFIG: HITLConfig = {
       description: 'WebSocket 连接需要确认',
     },
     
-    // AI 生成操作（超时由前端倒计时控制，无后端自动继续）
+    // AI 生成操作（人工 HITL 无服务端超时，仅等待前端 respond）
     {
       actionType: 'ai.text2image',
       enabled: true,
@@ -176,13 +169,7 @@ export const DEFAULT_HITL_CONFIG: HITLConfig = {
       description: '批量执行工具需确认（一次确认后串行执行所有子任务）',
     },
   ],
-  
-  timeouts: {
-    high: 300000,    // 5分钟
-    medium: 120000,  // 2分钟
-    low: 60000,      // 1分钟
-  },
-  
+
   notifications: {
     enabled: true,
     methods: ['desktop', 'sound', 'badge'],
@@ -209,17 +196,4 @@ export function requiresApproval(actionType: string, config: HITLConfig = DEFAUL
   }
   
   return rule.enabled && rule.requireApproval;
-}
-
-/**
- * 获取操作的超时时间
- */
-export function getTimeout(actionType: string, config: HITLConfig = DEFAULT_HITL_CONFIG): number {
-  const rule = getHITLRule(actionType, config);
-  
-  if (!rule) {
-    return config.timeouts.medium;
-  }
-  
-  return config.timeouts[rule.priority];
 }

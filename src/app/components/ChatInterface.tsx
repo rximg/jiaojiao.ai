@@ -11,6 +11,7 @@ import TodoPanel from './TodoPanel';
 import WorkspacePanel from './WorkspacePanel';
 import { useChat } from '../../providers/ChatProvider';
 import { isRenderableMessage } from '../../lib/chat-messages';
+import { isHitlPending } from '../../lib/hitl-block';
 
 interface ChatInterfaceProps {
   loadSessionId: string | null;
@@ -39,14 +40,32 @@ export default function ChatInterface({
   useEffect(() => {
     adjustTextareaHeight();
   }, [input, adjustTextareaHeight]);
-  const { messages, todos, isLoading, sendMessage, stopStream, currentSessionId, createNewSession, loadSession, resetSession, lastArtifactTime, pendingHitlRequest, respondConfirm, ttsProgressLive } = useChat();
+  const {
+    messages,
+    todos,
+    isLoading,
+    sendMessage,
+    stopStream,
+    currentSessionId,
+    createNewSession,
+    loadSession,
+    resetSession,
+    lastArtifactTime,
+    pendingHitlRequest,
+    respondConfirm,
+    updateHitlDraftEdits,
+    rejectStaleHitl,
+    ttsProgressLive,
+  } = useChat();
   const visibleMessages = messages.filter((message) => message.role !== 'assistant' || isRenderableMessage(message));
-  const waitingForConfirmation = Boolean(pendingHitlRequest);
+  const waitingForLiveHitl = Boolean(pendingHitlRequest);
+  const hasStaleHitl = messages.some((m) => m.hitlBlock && isHitlPending(m.hitlBlock));
   const [showWelcome, setShowWelcome] = useState(true);
   const [showWorkspace] = useState(true);
   const [hitlModeOpen, setHitlModeOpen] = useState(false);
   const [hitlPolicy, setHitlPolicy] = useState<HitlPolicy>({ mode: 'strict', allowlist: [] });
   const [hitlPolicyLoading, setHitlPolicyLoading] = useState(false);
+  const [hitlUserHint, setHitlUserHint] = useState<string | null>(null);
   const isCreatingSessionRef = useRef(false);
   /** 进入「案例新会话」时先 reset 一次，避免重复 reset */
   const resetForNullRef = useRef(false);
@@ -117,20 +136,14 @@ export default function ChatInterface({
         e.preventDefault();
       }
       const messageText = input.trim();
-      // 若有待确认的 HITL，发送 = 新消息：先取消确认再发送
+      // Live HITL：须先处理确认块，禁止用发消息隐式取消（Stale 无 pendingHitlRequest，仍可发消息）
       if (pendingHitlRequest) {
-        await respondConfirm(pendingHitlRequest.requestId, false);
-        if (!messageText) return;
-        if (!currentSessionId) {
-          onBack();
-          return;
+        if (messageText) {
+          console.warn('[ChatInterface] 请先完成上方人工确认后再发送消息');
         }
-        setShowWelcome(false);
-        await sendMessage(messageText);
-        setInput('');
-        if (textareaRef.current) textareaRef.current.focus();
         return;
       }
+      setHitlUserHint(null);
       if (!messageText || isLoading) return;
       const sessionId = await ensureSessionForSend();
       if (!sessionId) return;
@@ -139,7 +152,7 @@ export default function ChatInterface({
       setInput('');
       if (textareaRef.current) textareaRef.current.focus();
     },
-    [ensureSessionForSend, input, isLoading, pendingHitlRequest, respondConfirm, sendMessage]
+    [ensureSessionForSend, input, isLoading, pendingHitlRequest, sendMessage]
   );
 
   const handleKeyDown = useCallback(
@@ -159,24 +172,6 @@ export default function ChatInterface({
       setTimeout(() => handleSubmit(), 0);
     },
     [handleSubmit]
-  );
-
-  const handleHitlContinue = useCallback(
-    (editedPayload?: Record<string, unknown>) => {
-      if (pendingHitlRequest) {
-        respondConfirm(pendingHitlRequest.requestId, true, editedPayload);
-      }
-    },
-    [pendingHitlRequest, respondConfirm]
-  );
-
-  const handleHitlCancel = useCallback(
-    (cancelReason?: string) => {
-      if (pendingHitlRequest) {
-        respondConfirm(pendingHitlRequest.requestId, false, undefined, cancelReason);
-      }
-    },
-    [pendingHitlRequest, respondConfirm]
   );
 
   const handleBackClick = useCallback(async () => {
@@ -286,6 +281,50 @@ export default function ChatInterface({
     }
   }, [normalizePolicy]);
 
+  const renderHitlBlock = useCallback(
+    (message: import('../../types/types').Message) => {
+      const hb = message.hitlBlock!;
+      const isLive = Boolean(pendingHitlRequest?.requestId === hb.requestId);
+      return (
+        <HitlConfirmBlock
+          request={hb}
+          sessionId={currentSessionId}
+          isLive={isLive}
+          onDraftEditsChange={(d) => updateHitlDraftEdits(message.id, d)}
+          onContinue={(editedPayload) => {
+            if (pendingHitlRequest?.requestId === hb.requestId) {
+              void respondConfirm(hb.requestId, true, editedPayload);
+              return;
+            }
+            if (isHitlPending(hb)) {
+              setHitlUserHint(
+                '无法从离线状态自动继续。请在下方输入框发送「继续上一步确认」，由 checkpoint 恢复该步。'
+              );
+            }
+          }}
+          onCancel={() => {
+            if (pendingHitlRequest?.requestId === hb.requestId) {
+              void respondConfirm(hb.requestId, false);
+            } else if (isHitlPending(hb)) {
+              rejectStaleHitl(message.id);
+            }
+          }}
+          onAddAllowlist={(actionType) => {
+            void handleAddAllowlist(actionType);
+          }}
+        />
+      );
+    },
+    [
+      currentSessionId,
+      pendingHitlRequest,
+      respondConfirm,
+      updateHitlDraftEdits,
+      rejectStaleHitl,
+      handleAddAllowlist,
+    ]
+  );
+
   return (
     <div className="flex h-screen flex-col">
       {/* 配置栏 */}
@@ -295,7 +334,7 @@ export default function ChatInterface({
             variant="ghost"
             size="sm"
             onClick={handleBackClick}
-            disabled={isLoading && !waitingForConfirmation}
+            disabled={isLoading && !waitingForLiveHitl}
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
             返回
@@ -337,11 +376,11 @@ export default function ChatInterface({
             {visibleMessages.map((message) => (
               <React.Fragment key={message.id}>
                 {message.hitlBlock && !message.content ? (
-                  <HitlConfirmBlock request={message.hitlBlock} sessionId={currentSessionId} />
+                  renderHitlBlock(message)
                 ) : (
                   <>
                     <ChatMessage message={message} sessionId={currentSessionId} />
-                    {message.hitlBlock && <HitlConfirmBlock request={message.hitlBlock} sessionId={currentSessionId} />}
+                    {message.hitlBlock && renderHitlBlock(message)}
                   </>
                 )}
               </React.Fragment>
@@ -356,24 +395,13 @@ export default function ChatInterface({
                 </div>
               </div>
             )}
-            {pendingHitlRequest && (
-              <HitlConfirmBlock
-                request={pendingHitlRequest}
-                sessionId={currentSessionId}
-                onContinue={handleHitlContinue}
-                onCancel={handleHitlCancel}
-                onAddAllowlist={(actionType) => {
-                  void handleAddAllowlist(actionType);
-                }}
-              />
-            )}
-            {isLoading && !waitingForConfirmation && (
+            {isLoading && !waitingForLiveHitl && (
               <div className="flex items-center gap-2 text-muted-foreground">
                 <div className="h-2 w-2 bg-current rounded-full animate-pulse" />
                 <span>AI 正在思考...</span>
               </div>
             )}
-            {waitingForConfirmation && (
+            {waitingForLiveHitl && (
               <div className="flex items-center gap-2 text-muted-foreground">
                 <span>等待您确认</span>
               </div>
@@ -381,7 +409,7 @@ export default function ChatInterface({
           </div>
 
           {/* 等待 HITL 时仅在消息区 HitlConfirmBlock 内展示操作按钮（与 confirmText/cancelText 一致），避免与输入区上方重复 */}
-          {showWelcome && messages.length === 0 && !waitingForConfirmation && (
+          {showWelcome && messages.length === 0 && !waitingForLiveHitl && (
             <div className="px-6 pb-2">
               <QuickOptions onOptionClick={handleQuickOptionClick} />
             </div>
@@ -389,6 +417,11 @@ export default function ChatInterface({
 
           {/* 输入框 */}
           <div className="border-t border-border bg-card/50 p-4">
+            {hitlUserHint && (
+              <p className="mb-2 text-sm text-amber-800 dark:text-amber-200 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2">
+                {hitlUserHint}
+              </p>
+            )}
             <form onSubmit={handleSubmit} className="flex gap-3 items-end">
               <Textarea
                 ref={textareaRef}
@@ -396,24 +429,28 @@ export default function ChatInterface({
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={
-                  waitingForConfirmation
-                    ? '输入新消息并发送将取消当前确认并开始新对话'
-                    : isLoading
-                      ? '正在处理...'
-                      : '输入消息...'
+                  waitingForLiveHitl
+                    ? '请先完成上方人工确认（或点击「暂不执行本次」）'
+                    : hasStaleHitl
+                      ? '可发送「继续上一步确认」以从 checkpoint 恢复待确认步骤'
+                      : isLoading
+                        ? '正在处理...'
+                        : '输入消息...'
                 }
                 rows={1}
                 className="min-h-[52px] max-h-[200px] resize-none overflow-y-auto rounded-xl border-border py-3 leading-normal"
-                disabled={isLoading}
+                disabled={isLoading || waitingForLiveHitl}
               />
               <Button
-                type={waitingForConfirmation || !isLoading ? 'submit' : 'button'}
-                variant={isLoading && !waitingForConfirmation ? 'destructive' : 'default'}
-                onClick={isLoading && !waitingForConfirmation ? stopStream : handleSubmit}
-                disabled={!waitingForConfirmation && !isLoading && !input.trim()}
+                type={waitingForLiveHitl || !isLoading ? 'submit' : 'button'}
+                variant={isLoading && !waitingForLiveHitl ? 'destructive' : 'default'}
+                onClick={isLoading && !waitingForLiveHitl ? stopStream : handleSubmit}
+                disabled={
+                  waitingForLiveHitl || (!isLoading && !input.trim())
+                }
                 className="shrink-0 h-[52px] min-h-[52px] px-4 rounded-xl"
               >
-                {isLoading && !waitingForConfirmation ? (
+                {isLoading && !waitingForLiveHitl ? (
                   <>
                     <Square className="h-4 w-4" />
                     停止

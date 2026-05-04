@@ -32,12 +32,20 @@ export type StepResult =
   | { type: 'audio'; payload: { path: string; text?: string } }
   | { type: 'document'; payload: { pathOrContent: string; title?: string } };
 
-/** 已结束的 HITL 确认记录，用于在聊天历史中保留确认块 */
+/**
+ * 聊天消息内嵌 HITL（pending 可编辑 + 持久化草稿；已决只读）
+ * 旧存档可能仅有 `approved: boolean` 而无 `status`，仅用于只读展示。
+ */
 export interface HitlBlockRecord {
   requestId: string;
   actionType: string;
   payload: Record<string, unknown>;
-  approved: boolean;
+  status?: 'pending' | 'approved' | 'rejected';
+  /** 旧存档：无 `status` 时依此展示已继续/未继续 */
+  approved?: boolean;
+  draftEdits?: Record<string, unknown>;
+  reason?: string;
+  resolvedAt?: string;
 }
 
 /** 批量执行进度（从 IPC 接收） */

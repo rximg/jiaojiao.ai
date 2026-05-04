@@ -36,6 +36,21 @@ describe('chat message visibility', () => {
     ).toBe(true);
   });
 
+  it('keeps empty assistant messages with pending HITL status', () => {
+    expect(
+      isRenderableMessage(
+        createAssistantMessage({
+          hitlBlock: {
+            requestId: 'req-p',
+            actionType: 'ai.text2image',
+            payload: { prompt: 'x' },
+            status: 'pending',
+          },
+        })
+      )
+    ).toBe(true);
+  });
+
   it('removes empty assistant messages from persisted message lists', () => {
     const kept = createAssistantMessage({ id: 'assistant-keep', content: '有内容' });
     const hitl = createAssistantMessage({

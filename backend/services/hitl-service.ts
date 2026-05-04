@@ -2,14 +2,15 @@
  * HITL Service - Human-in-the-Loop 服务
  * 实现操作确认机制，支持文件、网络、系统操作的人工审批。
  *
- * 超时与恢复：
- * - 后端不做超时：仅等待前端 respond，无定时器、无超时后自动批准。
- * - 取消/超时后：工具抛错，当前 run 结束；同一 session 的 LangGraph checkpoint 仍保留在「执行该工具前」的状态。
- * - 同一会话内再次发消息（或继续）时，会按 thread_id 加载该 checkpoint，从断点继续，会再次进入同一 HITL，用户可点击「继续」通过。
+ * 等待与恢复：
+ * - 后端不做超时：仅等待前端 hitl:respond，无定时器、无超时后自动批准。
+ * - 拒绝（结构性交待或用户「暂不执行」）后：工具抛错，当前 run 结束；同一 session 的 LangGraph checkpoint 仍保留在「执行该工具前」的状态。
+ * - 同一会话内再次发消息（或继续）时，会按 thread_id 加载该 checkpoint，从断点继续，可再次进入 HITL。
+ * - 会话内禁止并发人工 HITL：未 respond 时再次 requestApproval 抛错。
  */
 
 import { randomUUID } from 'crypto';
-import { getHITLRule, getTimeout, type HITLConfig, DEFAULT_HITL_CONFIG } from '../config/hitl-config.js';
+import { getHITLRule, type HITLConfig, DEFAULT_HITL_CONFIG } from '../config/hitl-config.js';
 import type { LogManager } from './log-manager.js';
 import { registerHitlResponseWaiter } from '../../electron/ipc/hitl-response-bridge.js';
 import { loadConfig } from '../app-config.js';
@@ -119,7 +120,7 @@ export class HITLService {
   /**
    * 请求人工确认。调用方必须在收到批准且拿到返回值后，仅使用返回的 merged 执行后续操作，
    * 不得使用原始 payload，以保证所有编辑修改都能正确传入下一步。
-   * @returns 批准时返回合并后的 payload（原 payload + response.payload 用户编辑），拒绝（含前端超时取消）返回 null
+   * @returns 批准时返回合并后的 payload（原 payload + response.payload 用户编辑），拒绝返回 null
    */
   async requestApproval(
     actionType: string,
@@ -132,11 +133,16 @@ export class HITLService {
       await this.logAutoApproval(actionType, payload, decisionMode);
       return { ...payload };
     }
-    
+
+    if (this.pendingRequests.size > 0) {
+      throw new Error(
+        `HITL: concurrent requestApproval not allowed for session ${this.sessionId}; respond to the pending confirmation first`
+      );
+    }
+
     const rule = getHITLRule(actionType, this.config);
     const priority = rule?.priority || 'medium';
-    const timeout = getTimeout(actionType, this.config);
-    
+
     const request: HITLRequest = {
       requestId: randomUUID(),
       sessionId: this.sessionId,
@@ -144,7 +150,7 @@ export class HITLService {
       priority,
       payload,
       timestamp: new Date().toISOString(),
-      timeout,
+      timeout: 0,
       status: 'pending',
       audit: {
         decisionMode: 'manual',
@@ -190,7 +196,7 @@ export class HITLService {
       const merged = { ...payload, ...(response.payload ?? {}) };
       return merged as Record<string, unknown>;
     } catch (error) {
-      // 仅用于发送请求失败等异常；超时由前端控制并会通过 response 返回取消
+      // 发送请求失败等异常
       request.status = 'rejected';
       if (this.logManager) {
         await this.logManager.logHITL(this.sessionId, {
@@ -222,10 +228,9 @@ export class HITLService {
         actionType: request.actionType,
         priority: request.priority,
         payload: request.payload,
-        timeout: request.timeout,
       });
-      
-      // 仅等待前端响应，超时由前端倒计时控制并发送取消
+
+      // 仅等待前端 hitl:respond
       return await new Promise<HITLResponse>((resolve) => {
         registerHitlResponseWaiter(request.requestId, (data) => {
           resolve({
