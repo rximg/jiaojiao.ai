@@ -16,6 +16,8 @@ This document describes the current Human-in-the-Loop action surface, where each
 | `ai.text2image` | `true` | `true` | `low` | Custom prompt editor |
 | `ai.text2speech` | `true` | `true` | `low` | Custom text list editor |
 | `ai.vl_script` | `true` | `true` | `low` | Image preview plus editable user prompt |
+| `ai.vl_caption_regions` | `true` | `true` | `low` | Image preview, subtitle context list, editable VL user prompt |
+| `ai.image_caption_overlay` | `true` | `true` | `low` | Caption box editor (move/resize), read-only ruby, optional caption text edit |
 | `ai.image_label_order` | `true` | `true` | `medium` | Interactive image annotation editor |
 | `story.plan_review` | `true` | `true` | `medium` | Markdown review block |
 | `system.command` | `true` | `true` | `high` | Generic JSON |
@@ -30,6 +32,8 @@ This document describes the current Human-in-the-Loop action surface, where each
 - `generate_image` -> `ai.text2image`
 - `generate_audio` -> `ai.text2speech`
 - `generate_script_from_image` -> `ai.vl_script`
+- `suggest_caption_regions` -> `ai.vl_caption_regions`
+- `compose_caption_overlay_on_image` -> `ai.image_caption_overlay`
 - `annotate_image_with_numbers` -> `ai.image_label_order`
 - `batch_tool_call` -> `ai.batch_tool_call`
 - `delete_artifacts` -> `artifacts.delete`
@@ -38,7 +42,7 @@ This document describes the current Human-in-the-Loop action surface, where each
 
 ## Frontend Rendering
 
-- Custom rendering: `ai.text2image`, `ai.text2speech`, `ai.vl_script`, `ai.image_label_order`, `artifacts.delete`, `story.plan_review`
+- Custom rendering: `ai.text2image`, `ai.text2speech`, `ai.vl_script`, `ai.vl_caption_regions`, `ai.image_caption_overlay`, `ai.image_label_order`, `artifacts.delete`, `story.plan_review`
 - Batch rendering: payloads with `_batchMode` regardless of action type title
 - Generic rendering: any other action type, including `file.delete`, `file.execute`, `network.http`, `system.command`, and `ai.image_edit`
 

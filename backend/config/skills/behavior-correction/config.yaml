@@ -31,6 +31,11 @@ tools:
   generate_image:
     enable: true
     config_path: ./tools/t2i.yaml
+  suggest_caption_regions:
+    enable: true
+    config_path: ./tools/vl_caption_regions.yaml
+  compose_caption_overlay_on_image:
+    enable: true
   generate_audio:
     enable: true
     config_path: ./tools/tts.yaml

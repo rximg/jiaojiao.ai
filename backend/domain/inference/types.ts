@@ -7,6 +7,22 @@ export interface ScriptLine {
   text: string;
   x: number;
   y: number;
+  /** 字幕框宽（与 VL 约定一致时为归一化 0–1；解析失败或未返回时省略） */
+  w?: number;
+  /** 字幕框高（归一化 0–1，同上） */
+  h?: number;
+}
+
+/** 字幕内单字（或单展示单位）及其读音行（ruby），如汉语拼音带声调；标点等可为空串 */
+export interface CaptionRubyItem {
+  char: string;
+  reading: string;
+}
+
+/** 一行字幕对应的 ruby 序列，与 ScriptLine.text 对齐 */
+export interface CaptionRubyLine {
+  index: number;
+  items: CaptionRubyItem[];
 }
 
 /** 产物文件系统路径 */

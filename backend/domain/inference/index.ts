@@ -4,6 +4,8 @@ export type { AsyncInferencePort } from './ports/async-inference-port.js';
 export type { MultimodalPort } from './ports/multimodal-port.js';
 export type {
   ScriptLine,
+  CaptionRubyItem,
+  CaptionRubyLine,
   GenerateImageParams,
   GenerateImageResult,
   EditImageParams,

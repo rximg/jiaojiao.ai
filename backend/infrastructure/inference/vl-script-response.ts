@@ -94,7 +94,14 @@ export function parseVlScriptLinesFromModelContent(content: string): ScriptLine[
     const text = typeof o.text === 'string' ? o.text : String(o.text ?? '');
     const x = typeof o.x === 'number' ? o.x : Number(o.x) || 0;
     const y = typeof o.y === 'number' ? o.y : Number(o.y) || 0;
-    lines.push({ text, x, y });
+    const hasW = o.w !== undefined && o.w !== null && String(o.w).length > 0;
+    const hasH = o.h !== undefined && o.h !== null && String(o.h).length > 0;
+    const w = hasW ? (typeof o.w === 'number' ? o.w : Number(o.w) || undefined) : undefined;
+    const h = hasH ? (typeof o.h === 'number' ? o.h : Number(o.h) || undefined) : undefined;
+    const line: ScriptLine = { text, x, y };
+    if (w !== undefined && !Number.isNaN(w)) line.w = w;
+    if (h !== undefined && !Number.isNaN(h)) line.h = h;
+    lines.push(line);
   }
   return lines;
 }

@@ -101,6 +101,20 @@ export const DEFAULT_HITL_CONFIG: HITLConfig = {
       description: '以图生剧本需要确认',
     },
     {
+      actionType: 'ai.vl_caption_regions',
+      enabled: true,
+      priority: 'low',
+      requireApproval: true,
+      description: 'VL 建议字幕区布局需要确认',
+    },
+    {
+      actionType: 'ai.image_caption_overlay',
+      enabled: true,
+      priority: 'low',
+      requireApproval: true,
+      description: '字幕与注音叠层合成需要确认',
+    },
+    {
       actionType: 'ai.image_label_order',
       enabled: true,
       priority: 'medium',

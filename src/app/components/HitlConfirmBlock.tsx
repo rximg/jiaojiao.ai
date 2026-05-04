@@ -6,6 +6,11 @@ import MarkdownDocumentBlock from './MarkdownDocumentBlock';
 import ImageBlock from './ImageBlock';
 import EditableDocumentBlock from './EditableDocumentBlock';
 import ImageWithBoundingBoxes from './ImageWithBoundingBoxes';
+import ImageCaptionOverlayEditor, {
+  DEFAULT_CAPTION_OVERLAY_EDITOR_STYLE,
+  type CaptionOverlayBoxState,
+  type CaptionOverlayEditorStyleState,
+} from './ImageCaptionOverlayEditor';
 
 export interface PendingHitlRequest {
   requestId: string;
@@ -17,6 +22,8 @@ export interface PendingHitlRequest {
 const ACTION_TITLE: Record<string, string> = {  'story.plan_review': '确认绘本故事策划稿？',  'ai.batch_tool_call': '批量执行工具？',  'ai.text2image': '生成图像？',
   'ai.text2speech': '合成语音？',
   'ai.vl_script': '以图生剧本？',
+  'ai.vl_caption_regions': '确认字幕区布局（VL）？',
+  'ai.image_caption_overlay': '确认字幕叠层与注音？',
   'ai.image_label_order': '标注图片序号？',
   'artifacts.delete': '删除以下产物？',
 };
@@ -130,6 +137,12 @@ export default function HitlConfirmBlock({ request, sessionId, onContinue, onCan
   const [labelAnnotations, setLabelAnnotations] = useState<Array<{ number: number; x: number; y: number }>>([]);
   const labelAnnotationsRef = useRef<Array<{ number: number; x: number; y: number }>>([]);
   const [editableVlUserPrompt, setEditableVlUserPrompt] = useState('');
+  const [editableVlCaptionUserPrompt, setEditableVlCaptionUserPrompt] = useState('');
+  const [captionOverlayBoxes, setCaptionOverlayBoxes] = useState<CaptionOverlayBoxState[]>([]);
+  const [captionOverlayStyle, setCaptionOverlayStyle] = useState<CaptionOverlayEditorStyleState>(
+    DEFAULT_CAPTION_OVERLAY_EDITOR_STYLE
+  );
+  const captionOverlayBoxesRef = useRef<CaptionOverlayBoxState[]>([]);
   const [editableMarkdownContent, setEditableMarkdownContent] = useState('');
   /** story.plan_review：默认展开；仅当正文超过摘要阈值时可收起 */
   const [planReviewExpanded, setPlanReviewExpanded] = useState(true);
@@ -206,6 +219,24 @@ export default function HitlConfirmBlock({ request, sessionId, onContinue, onCan
   }, [resolved, request.actionType, payload.userPrompt]);
 
   useEffect(() => {
+    if (resolved || request.actionType !== 'ai.vl_caption_regions') return;
+    const up = typeof payload.userPrompt === 'string' ? payload.userPrompt : '';
+    setEditableVlCaptionUserPrompt(up);
+  }, [resolved, request.actionType, payload.userPrompt]);
+
+  useEffect(() => {
+    if (resolved || request.actionType !== 'ai.image_caption_overlay') return;
+    const boxes = Array.isArray(payload.captionBoxes) ? (payload.captionBoxes as CaptionOverlayBoxState[]) : [];
+    setCaptionOverlayBoxes(boxes);
+    captionOverlayBoxesRef.current = boxes;
+    const st =
+      payload.captionStyle && typeof payload.captionStyle === 'object'
+        ? (payload.captionStyle as Partial<CaptionOverlayEditorStyleState>)
+        : {};
+    setCaptionOverlayStyle({ ...DEFAULT_CAPTION_OVERLAY_EDITOR_STYLE, ...st });
+  }, [resolved, request.actionType, payload.captionBoxes, payload.captionStyle]);
+
+  useEffect(() => {
     if (resolved || request.actionType !== 'story.plan_review') return;
     const markdownContent = typeof payload.markdownContent === 'string' ? payload.markdownContent : '';
     setEditableMarkdownContent(markdownContent);
@@ -231,13 +262,37 @@ export default function HitlConfirmBlock({ request, sessionId, onContinue, onCan
     } else if (request.actionType === 'ai.vl_script' && !resolved) {
       const trimmed = editableVlUserPrompt.trim();
       onContinue(trimmed ? { userPrompt: trimmed } : undefined);
+    } else if (request.actionType === 'ai.vl_caption_regions' && !resolved) {
+      const trimmed = editableVlCaptionUserPrompt.trim();
+      onContinue(trimmed ? { userPrompt: trimmed } : undefined);
+    } else if (request.actionType === 'ai.image_caption_overlay' && !resolved) {
+      const latest =
+        captionOverlayBoxesRef.current.length > 0 ? captionOverlayBoxesRef.current : captionOverlayBoxes;
+      onContinue({
+        captionBoxes: latest,
+        captionStyle: captionOverlayStyle,
+      });
     } else if (request.actionType === 'story.plan_review' && !resolved) {
       const trimmed = editableMarkdownContent.trim();
       onContinue(trimmed ? { markdownContent: trimmed } : undefined);
     } else {
       onContinue();
     }
-  }, [onContinue, request.actionType, resolved, editablePrompt, editableTexts, promptLoadedFromFile, labelAnnotations, editableVlUserPrompt, editableMarkdownContent, stopCountdown]);
+  }, [
+    onContinue,
+    request.actionType,
+    resolved,
+    editablePrompt,
+    editableTexts,
+    promptLoadedFromFile,
+    labelAnnotations,
+    editableVlUserPrompt,
+    editableVlCaptionUserPrompt,
+    captionOverlayBoxes,
+    captionOverlayStyle,
+    editableMarkdownContent,
+    stopCountdown,
+  ]);
 
   const renderPayload = () => {
     // ── 批量模式：统一展示子任务列表 ──
@@ -333,6 +388,63 @@ export default function HitlConfirmBlock({ request, sessionId, onContinue, onCan
             minRows={4}
           />
         </div>
+      );
+    }
+    if (request.actionType === 'ai.vl_caption_regions') {
+      const imagePath = typeof payload.imagePath === 'string' ? payload.imagePath : '';
+      const ctx = Array.isArray(payload.contextLines) ? payload.contextLines : [];
+      const ctxText = ctx.map((t: unknown, i: number) => `${i + 1}. ${String(t)}`).join('\n') || '（无）';
+      if (resolved) {
+        const up = typeof payload.userPrompt === 'string' ? payload.userPrompt : null;
+        return (
+          <div className="space-y-2">
+            {imagePath ? <ImageBlock path={imagePath} sessionId={sessionId} /> : <div className="text-sm opacity-80">无图片路径</div>}
+            <DocumentBlock pathOrContent={ctxText} title="字幕文案（上下文）" />
+            {up ? <DocumentBlock pathOrContent={up} title="用户补充/修改" /> : null}
+          </div>
+        );
+      }
+      return (
+        <div className="space-y-2">
+          {imagePath ? <ImageBlock path={imagePath} sessionId={sessionId} /> : <div className="text-sm opacity-80">无图片路径</div>}
+          <DocumentBlock pathOrContent={ctxText} title="字幕文案（将传给 VL，须与叠层使用的字幕一致）" />
+          <EditableDocumentBlock
+            value={editableVlCaptionUserPrompt}
+            onChange={setEditableVlCaptionUserPrompt}
+            title="用户补充或修改要求"
+            placeholder="可描述希望字幕区出现在画面中的大致位置、避让主体等，将与系统提示词一起传给 VL..."
+            minRows={4}
+          />
+        </div>
+      );
+    }
+    if (request.actionType === 'ai.image_caption_overlay') {
+      const imagePath = typeof payload.imagePath === 'string' ? payload.imagePath : '';
+      const allowEdit = payload.allowEditCaptionText === true;
+      if (resolved) {
+        return imagePath ? (
+          <ImageBlock path={imagePath} sessionId={sessionId} />
+        ) : (
+          <div className="text-sm opacity-80">无图片路径</div>
+        );
+      }
+      if (!imagePath || captionOverlayBoxes.length === 0) {
+        return <div className="text-sm opacity-80">加载中或无字幕框数据...</div>;
+      }
+      return (
+        <ImageCaptionOverlayEditor
+          imagePath={imagePath}
+          sessionId={sessionId}
+          boxes={captionOverlayBoxes}
+          style={captionOverlayStyle}
+          allowEditCaptionText={allowEdit}
+          onBoxesChange={(b) => {
+            setCaptionOverlayBoxes(b);
+            captionOverlayBoxesRef.current = b;
+          }}
+          onStyleChange={setCaptionOverlayStyle}
+          latestBoxesRef={captionOverlayBoxesRef}
+        />
       );
     }
     if (request.actionType === 'ai.image_label_order') {
@@ -462,10 +574,12 @@ export default function HitlConfirmBlock({ request, sessionId, onContinue, onCan
                 type="button"
                 onClick={() => {
                   stopCountdown();
-                  const reason =
-                    request.actionType === 'ai.vl_script' && editableVlUserPrompt.trim()
-                      ? editableVlUserPrompt.trim()
-                      : undefined;
+                  let reason: string | undefined;
+                  if (request.actionType === 'ai.vl_script' && editableVlUserPrompt.trim()) {
+                    reason = editableVlUserPrompt.trim();
+                  } else if (request.actionType === 'ai.vl_caption_regions' && editableVlCaptionUserPrompt.trim()) {
+                    reason = editableVlCaptionUserPrompt.trim();
+                  }
                   onCancel?.(reason);
                 }}
                 className="px-3 py-1.5 text-sm rounded-xl border border-border hover:bg-muted/80 transition-colors"

@@ -37,4 +37,17 @@ describe('vl-script-response', () => {
     expect(lines[0].x).toBe(100);
     expect(lines[0].y).toBe(200);
   });
+
+  it('parseVlScriptLinesFromModelContent parses optional w and h', () => {
+    const raw = '[{"text":"字幕","x":0.1,"y":0.2,"w":0.5,"h":0.08}]';
+    const lines = parseVlScriptLinesFromModelContent(raw);
+    expect(lines[0]).toEqual({ text: '字幕', x: 0.1, y: 0.2, w: 0.5, h: 0.08 });
+  });
+
+  it('parseVlScriptLinesFromModelContent omits w/h when absent', () => {
+    const raw = '[{"text":"a","x":1,"y":2}]';
+    const lines = parseVlScriptLinesFromModelContent(raw);
+    expect(lines[0].w).toBeUndefined();
+    expect(lines[0].h).toBeUndefined();
+  });
 });
