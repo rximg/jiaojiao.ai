@@ -13,6 +13,8 @@ export interface InvokeAgentUseCaseCallbacks {
   onMessage: (threadId: string, messages: Array<{ id: string; role: string; content: string; stepResults?: StepResult[] }>) => void;
   onStepResult?: (threadId: string, messageId: string, stepResults: StepResult[]) => void;
   onToolCall?: (threadId: string, messageId: string | undefined, toolCalls: any[]) => void;
+  /** LLM usage：真实 completion tokens（来自上游 usage），可能流式或仅结束时一次 */
+  onTokenUsage?: (threadId: string, messageId: string | undefined, completionTokens: number, isFinal?: boolean) => void;
   /** TTS 每完成一个文件时推送，用于前端显示「已生成 x/n 份文件」 */
   onTtsProgress?: (threadId: string, messageId: string | undefined, toolCallId: string | undefined, current: number, total: number, path: string) => void;
   /** 统一批量进度回调，覆盖所有批量工具（generate_images, edit_images, generate_audio 等） */
@@ -209,6 +211,7 @@ export async function invokeAgentUseCase(
 
   const runCtx: RunContext = {
     threadId: effectiveSessionId,
+    onTokenUsage: callbacks.onTokenUsage,
     onTtsProgress: callbacks.onTtsProgress,
     onBatchProgress: callbacks.onBatchProgress,
   };

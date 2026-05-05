@@ -63,6 +63,13 @@ export interface BatchProgress {
   };
 }
 
+export type AgentTokenUsageEvent = {
+  threadId: string;
+  messageId?: string;
+  completionTokens: number;
+  isFinal?: boolean;
+};
+
 /** 消息上的批量操作状态（展示 BatchWrapper 用） */
 export interface BatchOperationState {
   batchId: string;

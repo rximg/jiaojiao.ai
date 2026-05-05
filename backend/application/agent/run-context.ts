@@ -8,6 +8,12 @@ import type { BatchProgress } from '../../tools/types.js';
 
 export interface RunContext {
   threadId: string;
+  onTokenUsage?: (
+    threadId: string,
+    messageId: string | undefined,
+    completionTokens: number,
+    isFinal?: boolean
+  ) => void;
   onTtsProgress?: (
     threadId: string,
     messageId: string | undefined,

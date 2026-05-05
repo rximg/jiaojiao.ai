@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
-import type { Message, TodoItem, StepResult, BatchProgress } from '../types/types';
+import type { Message, TodoItem, StepResult, BatchProgress, AgentTokenUsageEvent } from '../types/types';
 import { isRenderableMessage, mergeToolCallsIntoMessages, sanitizeMessages } from '../lib/chat-messages';
 
 interface AgentErrorState {
@@ -24,6 +24,7 @@ interface ChatContextType {
   quotaError: { message: string; error: string } | null;
   agentError: AgentErrorState | null;
   isLoading: boolean;
+  thinkingTokensLive: AgentTokenUsageEvent | null;
   currentSessionId: string | null;
   lastArtifactTime: number; // 最后一次生成产物的时间戳，用于触发刷新
   /** 当前会话下 TTS 实时进度（聊天框内独立一行显示），流结束或会话切换时清空 */
@@ -52,6 +53,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [quotaError, setQuotaError] = useState<{ message: string; error: string } | null>(null);
   const [agentError, setAgentError] = useState<AgentErrorState | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [thinkingTokensLive, setThinkingTokensLive] = useState<AgentTokenUsageEvent | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [lastArtifactTime, setLastArtifactTime] = useState<number>(0);
   /** TTS 进度：在聊天框内单独显示一行「已生成 x/n 份文件」，流结束清空 */
@@ -60,6 +62,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const skipNextAutoSaveRef = useRef(false);
   const allMessagesRef = useRef<Message[]>([]);
   const pendingHitlRequestRef = useRef<typeof pendingHitlRequest>(null);
+  const hasAssistantTextLiveRef = useRef(false);
   /** 防止同一次 hitl:confirmRequest 被多 handler 同步重复插入 */
   const liveHitlInsertLockRef = useRef<Set<string>>(new Set());
 
@@ -197,6 +200,21 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     const handleMessage = (data: any) => {
       // threadId 即 sessionId，直接使用
       if (data.threadId === currentSessionId) {
+        // 一旦 assistant 真正开始输出文本（非空），隐藏 thinking tokens 行
+        if (!hasAssistantTextLiveRef.current) {
+          const hasText = Array.isArray(data.messages)
+            ? data.messages.some(
+                (m: any) =>
+                  (m?.role ?? 'assistant') === 'assistant' &&
+                  typeof m?.content === 'string' &&
+                  m.content.trim().length > 0
+              )
+            : false;
+          if (hasText) {
+            hasAssistantTextLiveRef.current = true;
+            setThinkingTokensLive(null);
+          }
+        }
         const newMessages = data.messages.map((msg: any) => ({
           id: msg.id || `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
           role: msg.role || 'assistant',
@@ -405,6 +423,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       window.electronAPI.agent.onBatchProgress(handleBatchProgress);
     }
 
+    if (typeof window.electronAPI.agent.onTokenUsage === 'function') {
+      window.electronAPI.agent.onTokenUsage((data: AgentTokenUsageEvent) => {
+        if (data.threadId !== currentSessionId) return;
+        if (hasAssistantTextLiveRef.current) return;
+        setThinkingTokensLive(data);
+      });
+    }
+
     if (typeof window.electronAPI.agent.onQuotaExceeded === 'function') {
       window.electronAPI.agent.onQuotaExceeded(handleQuotaExceeded);
     }
@@ -559,6 +585,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     allMessagesRef.current = [...allMessagesRef.current, userMessage];
 
     setIsLoading(true);
+    hasAssistantTextLiveRef.current = false;
+    setThinkingTokensLive(null);
     setAgentError(null);
     try {
       // 现在只需传递 sessionId，threadId 已统一
@@ -585,6 +613,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setTtsProgressLive(null);
     } finally {
       setIsLoading(false);
+      setThinkingTokensLive(null);
       setTtsProgressLive(null);
     }
   }, [currentSessionId]);
@@ -755,6 +784,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         quotaError,
         agentError,
         isLoading,
+        thinkingTokensLive,
         currentSessionId,
         lastArtifactTime,
         ttsProgressLive,

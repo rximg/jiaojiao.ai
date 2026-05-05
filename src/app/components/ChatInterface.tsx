@@ -44,6 +44,7 @@ export default function ChatInterface({
     messages,
     todos,
     isLoading,
+    thinkingTokensLive,
     sendMessage,
     stopStream,
     currentSessionId,
@@ -65,6 +66,7 @@ export default function ChatInterface({
   });
   const waitingForLiveHitl = Boolean(pendingHitlRequest);
   const hasStaleHitl = messages.some((m) => m.hitlBlock && isHitlPending(m.hitlBlock));
+  const hasRenderableAssistantYet = messages.some((m) => m.role === 'assistant' && m.content.trim().length > 0);
   const [showWelcome, setShowWelcome] = useState(true);
   const [showWorkspace] = useState(true);
   const [hitlModeOpen, setHitlModeOpen] = useState(false);
@@ -400,10 +402,13 @@ export default function ChatInterface({
                 </div>
               </div>
             )}
-            {isLoading && !waitingForLiveHitl && (
+            {isLoading && !waitingForLiveHitl && !hasRenderableAssistantYet && (
               <div className="flex items-center gap-2 text-muted-foreground">
                 <div className="h-2 w-2 bg-current rounded-full animate-pulse" />
-                <span>AI 正在思考...</span>
+                <span>AI 正在思考…</span>
+                <span className="opacity-70">
+                  completion tokens: {thinkingTokensLive ? thinkingTokensLive.completionTokens : '—'}
+                </span>
               </div>
             )}
             {waitingForLiveHitl && (
