@@ -57,7 +57,7 @@ export default function ChatMessage({ message, sessionId }: ChatMessageProps) {
           </div>
         )}
         {message.stepResults && message.stepResults.length > 0 && (
-          <StepResultBlocks stepResults={message.stepResults} />
+          <StepResultBlocks stepResults={message.stepResults} sessionId={sessionId} />
         )}
       </div>
       {isUser && (

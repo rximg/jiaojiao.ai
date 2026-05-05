@@ -77,7 +77,7 @@ function createWindow() {
   // 开发环境加载 Vite 开发服务器，生产环境加载构建文件
   if (process.env.NODE_ENV === 'development') {
     mainWindow.loadURL('http://localhost:5173');
-    // mainWindow.webContents.openDevTools();
+    mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
     // mainWindow.webContents.openDevTools();

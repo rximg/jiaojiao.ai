@@ -27,6 +27,6 @@ describe('caption-overlay-render', () => {
     expect(svg).toContain('bǎo');
     expect(svg).toContain('宝');
     expect(svg).toContain('width="400"');
-    expect(svg).toMatch(/fill="rgba\(255,255,255/);
+    expect(svg).toMatch(/fill="none"|fill="transparent"/);
   });
 });

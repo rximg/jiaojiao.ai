@@ -11,7 +11,19 @@ interface ImageBlockProps {
 function isAbsolutePath(input: string): boolean {
   if (!input) return false;
   if (input.startsWith('local-file://')) return true;
-  return /^[a-zA-Z]:[\\/]/.test(input) || input.startsWith('/');
+  // Windows 绝对路径：C:\ 或 C:/
+  if (/^[a-zA-Z]:[\\/]/.test(input)) return true;
+  // POSIX 绝对路径仅在明显是系统路径时认为是 absolute（避免把 "/foo.png" 误当成绝对导致无法按 session 解析）
+  if (input.startsWith('/')) {
+    return (
+      input.startsWith('/Users/') ||
+      input.startsWith('/home/') ||
+      input.startsWith('/var/') ||
+      input.startsWith('/Applications/') ||
+      input.startsWith('/tmp/')
+    );
+  }
+  return false;
 }
 
 export default function ImageBlock({ path, prompt, sessionId }: ImageBlockProps) {
@@ -28,7 +40,8 @@ export default function ImageBlock({ path, prompt, sessionId }: ImageBlockProps)
       }
 
       try {
-        const { path: fullPath } = await window.electronAPI.fs.getFilePath(sessionId, path);
+        const candidate = path.startsWith('/') ? path.slice(1) : path;
+        const { path: fullPath } = await window.electronAPI.fs.getFilePath(sessionId, candidate);
         if (!cancelled) setResolvedPath(fullPath || path);
       } catch {
         if (!cancelled) setResolvedPath(path);

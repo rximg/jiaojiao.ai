@@ -43,6 +43,8 @@ export default function ChatInterface({
   const {
     messages,
     todos,
+    currentCaseId,
+    caseTitleById,
     isLoading,
     thinkingTokensLive,
     sendMessage,
@@ -76,6 +78,18 @@ export default function ChatInterface({
   const isCreatingSessionRef = useRef(false);
   /** 进入「案例新会话」时先 reset 一次，避免重复 reset */
   const resetForNullRef = useRef(false);
+
+  const headerCaseTitle = (() => {
+    const effectiveCaseId =
+      (typeof currentCaseId === 'string' && currentCaseId.trim().length > 0
+        ? currentCaseId.trim()
+        : null) ??
+      (typeof caseIdForNewSession === 'string' && caseIdForNewSession.trim().length > 0
+        ? caseIdForNewSession.trim()
+        : null);
+    if (!effectiveCaseId) return '未命名案例';
+    return caseTitleById[effectiveCaseId] ?? effectiveCaseId;
+  })();
 
   // 加载或创建会话
   useEffect(() => {
@@ -346,7 +360,7 @@ export default function ChatInterface({
             <ArrowLeft className="mr-2 h-4 w-4" />
             返回
           </Button>
-          <h1 className="text-xl font-semibold text-foreground">百科绘本</h1>
+          <h1 className="text-xl font-semibold text-foreground">{headerCaseTitle}</h1>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => setHitlModeOpen(true)}>

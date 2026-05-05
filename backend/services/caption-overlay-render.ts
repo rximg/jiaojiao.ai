@@ -38,8 +38,8 @@ export interface CaptionOverlayBoxInput {
 }
 
 export const DEFAULT_CAPTION_OVERLAY_STYLE: CaptionOverlayStyleParams = {
-  captionTextFontSizePx: 28,
-  captionRubyFontSizePx: 14,
+  captionTextFontSizePx: 64,
+  captionRubyFontSizePx: 24,
   captionTextColor: '#2d2d2d',
   captionRubyColor: '#5c5c5c',
   fontFamily: '"Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif',
@@ -47,8 +47,8 @@ export const DEFAULT_CAPTION_OVERLAY_STYLE: CaptionOverlayStyleParams = {
   textStrokeColor: 'rgba(0,0,0,0.35)',
   boxBackgroundOpacity: 0.72,
   boxPaddingPx: 8,
-  captionBoxBackground: 'light_frosted',
-  captionBoxBorder: 'white_soft',
+  captionBoxBackground: 'none',
+  captionBoxBorder: 'none',
 };
 
 function escapeXml(s: string): string {

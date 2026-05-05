@@ -10,6 +10,10 @@ interface AgentErrorState {
 interface ChatContextType {
   messages: Message[];
   todos: TodoItem[];
+  /** 当前会话绑定的案例 ID（caseId） */
+  currentCaseId: string | null;
+  /** 案例标题映射（caseId -> title），来自 config:getCases */
+  caseTitleById: Record<string, string>;
   /** Live：主进程正在等待 hitl:respond，含消息内 pending 行 id */
   pendingHitlRequest: {
     requestId: string;
@@ -44,6 +48,8 @@ const ChatContext = createContext<ChatContextType | undefined>(undefined);
 export function ChatProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [todos, setTodos] = useState<TodoItem[]>([]);
+  const [currentCaseId, setCurrentCaseId] = useState<string | null>(null);
+  const [caseTitleById, setCaseTitleById] = useState<Record<string, string>>({});
   const [pendingHitlRequest, setPendingHitlRequest] = useState<{
     requestId: string;
     actionType: string;
@@ -69,6 +75,35 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     pendingHitlRequestRef.current = pendingHitlRequest;
   }, [pendingHitlRequest]);
+
+  // 加载案例元数据（caseId -> title），用于聊天页标题显示
+  useEffect(() => {
+    let cancelled = false;
+    const loadCases = async () => {
+      if (typeof window.electronAPI?.config?.getCases !== 'function') return;
+      try {
+        const cases = await window.electronAPI.config.getCases();
+        if (cancelled) return;
+        const mapping: Record<string, string> = {};
+        (Array.isArray(cases) ? cases : []).forEach((c: unknown) => {
+          const item = c as { id?: unknown; title?: unknown };
+          if (typeof item?.id !== 'string') return;
+          const id = item.id.trim();
+          if (!id) return;
+          const title =
+            typeof item.title === 'string' && item.title.trim().length > 0 ? item.title.trim() : id;
+          mapping[id] = title;
+        });
+        setCaseTitleById(mapping);
+      } catch (error) {
+        console.warn('[ChatProvider] Failed to load cases:', error);
+      }
+    };
+    void loadCases();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // 自动保存消息和todos到session
   useEffect(() => {
@@ -549,6 +584,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       const { sessionId } = result;
       console.log('[ChatProvider] Session created:', sessionId);
       setCurrentSessionId(sessionId);
+      setCurrentCaseId(typeof caseId === 'string' && caseId.trim().length > 0 ? caseId.trim() : null);
       // 清空消息和todos
       liveHitlInsertLockRef.current.clear();
       setMessages([]);
@@ -686,6 +722,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       // 从session加载历史数据
       const sessionData = await window.electronAPI.session.get(sessionId);
       console.log('[ChatProvider] Loaded session data:', sessionData);
+
+      setCurrentCaseId(
+        typeof (sessionData as { meta?: { caseId?: unknown } })?.meta?.caseId === 'string'
+          ? ((sessionData as { meta?: { caseId?: string } }).meta!.caseId!.trim() || null)
+          : null
+      );
       
       // 加载消息（保留 hitlBlock，标准化 timestamp 为 Date）
       if (sessionData.messages && Array.isArray(sessionData.messages)) {
@@ -720,6 +762,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       
       // 清理状态
       setCurrentSessionId(null);
+      setCurrentCaseId(null);
       setMessages([]);
       setTodos([]);
       allMessagesRef.current = [];
@@ -764,6 +807,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
     
     setCurrentSessionId(null);
+    setCurrentCaseId(null);
     setPendingHitlRequest(null);
     liveHitlInsertLockRef.current.clear();
     setIsLoading(false);
@@ -778,6 +822,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       value={{
         messages,
         todos,
+        currentCaseId,
+        caseTitleById,
         pendingHitlRequest,
         updateHitlDraftEdits,
         rejectStaleHitl,
