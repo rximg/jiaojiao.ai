@@ -26,7 +26,11 @@ description: 古诗词绘本：先确认篇目与全文，再经《古诗词绘�
 1. **两阶段**：**Plan 结束前**（方案文件未经 `request_story_plan_review` 通过）禁止调用 `generate_image`、`generate_audio`、`batch_tool_call`、`suggest_caption_regions`、`compose_caption_overlay_on_image`。
 2. **单一事实源**：方案确认后，诗词正文、分行方式、`captionRubyLines`、文生图提示词、朗读分段均以 **`古诗词绘本方案.md`** 为准；Execute 阶段禁止在聊天区「另起炉灶」改诗意或改字；若用户要改，须**先改方案文件并再次走 HITL**。
 3. **底图无字**：`generate_image` 的提示词须明确要求**画面中不含任何汉字/拼音/字母**（字幕全部由叠层工具绘制）。
-4. **注音一致**：`compose_caption_overlay_on_image` 使用的 `lines` 与 `captionRubyLines` 必须与方案中约定**逐字一致**（含标点）；`lines[i]` 拼接文本必须与 `captionRubyLines.lines[i].items` 拼接结果完全一致（参见行为纠正案相同约束）。
+4. **注音一致（硬约束）**：任何时候只要你要写入/输出 `captionRubyLines`，必须满足下列条件，否则**禁止进入 Execute**、禁止调用 `compose_caption_overlay_on_image`：
+   - **逐行一致**：对每一行 \(i\)，`screenLines[i]`（屏幕分行文本）与 `captionRubyLines.lines[i].items.map(x => x.char).join('')` **必须完全一致**。
+   - **包含标点与空白**：句读符号（如 `，。！？；：「」（）…`）、全角空格/普通空格等都必须作为 `char` 出现在 items 中；此类字符的 `reading` 一律用 `""`。
+   - **不允许“看起来一样”但实际不同**：需要保留原始字符，禁止擅自改用近似符号（如把 `,` 当作 `，`、把 `...` 当作 `…`）。
+   - **自检**：在把方案提交 HITL 前，必须在脑内做一次“逐行拼接校验”，确保不会触发错误形态：`第 i 行字幕与 ruby items 拼接不一致`。
 5. **HITL 返回**：若 `request_story_plan_review` 返回的 `markdownContent` 与磁盘上方案不同，须立即 `edit_file` 回写 `古诗词绘本方案.md` 后再进入 Execute。
 
 ## Todo 列表（固定 6 项）

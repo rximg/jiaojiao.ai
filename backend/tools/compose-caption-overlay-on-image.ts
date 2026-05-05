@@ -12,6 +12,7 @@ import {
 } from '../services/caption-region-geometry.js';
 import {
   assertCaptionRubyMatchesScriptLines,
+  normalizeCaptionRubyItemsToScriptText,
   parseCaptionRubyPayload,
 } from '../services/caption-ruby-payload.js';
 import {
@@ -75,7 +76,10 @@ function create(_config: ToolConfig, context: ToolContext) {
     }) => {
       const sessionId = input.sessionId || context.getDefaultSessionId();
       const lines = z.array(scriptLineSchema).parse(input.lines) as ScriptLine[];
-      const rubyLines = coerceCaptionRubyLines(input.captionRubyLines);
+      const rubyLines = coerceCaptionRubyLines(input.captionRubyLines).map((line, i) => ({
+        ...line,
+        items: normalizeCaptionRubyItemsToScriptText(lines[i]?.text ?? '', line.items),
+      }));
       assertCaptionRubyMatchesScriptLines(lines, rubyLines);
 
       const workspaceFs = getWorkspaceFilesystem({});

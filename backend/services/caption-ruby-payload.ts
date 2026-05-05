@@ -47,3 +47,39 @@ export function assertCaptionRubyMatchesScriptLines(
     }
   }
 }
+
+function toCharArrayNfc(s: string): string[] {
+  // 按 JS 字符（code unit）切分即可覆盖中文与常见标点；emoji 等超出 BMP 的场景此处暂不考虑
+  return Array.from(s.normalize('NFC'));
+}
+
+/**
+ * 将 ruby items 对齐到脚本文字，自动补齐缺失字符（如标点），reading 置空。
+ *
+ * 约束：
+ * - ruby items 必须是 scriptText 的子序列（允许丢字符，但不允许多字符/乱序）
+ * - 若 ruby items 含有脚本中不存在的字符，则抛错（避免悄悄错位）
+ */
+export function normalizeCaptionRubyItemsToScriptText(
+  scriptText: string,
+  items: Array<{ char: string; reading: string }>
+): Array<{ char: string; reading: string }> {
+  const scriptChars = toCharArrayNfc(scriptText);
+  const inItems = items.map((it) => ({ char: it.char.normalize('NFC'), reading: it.reading }));
+
+  const out: Array<{ char: string; reading: string }> = [];
+  let j = 0;
+  for (const c of scriptChars) {
+    if (j < inItems.length && inItems[j].char === c) {
+      out.push({ char: c, reading: inItems[j].reading });
+      j++;
+    } else {
+      out.push({ char: c, reading: '' });
+    }
+  }
+  if (j !== inItems.length) {
+    const rest = inItems.slice(j).map((it) => it.char).join('');
+    throw new Error(`ruby items 含有脚本中不存在或乱序的字符：剩余 "${rest}"`);
+  }
+  return out;
+}
