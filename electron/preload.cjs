@@ -33,6 +33,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onToolCall: (callback) => {
       ipcRenderer.on('agent:toolCall', (_event, data) => callback(data));
     },
+    onTokenUsage: (callback) => {
+      ipcRenderer.on('agent:tokenUsage', (_event, data) => callback(data));
+    },
     onTtsProgress: (callback) => {
       ipcRenderer.on('agent:ttsProgress', (_event, data) => callback(data));
     },
