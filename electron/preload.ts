@@ -6,6 +6,16 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 
 /** 单槽：避免多次 onConfirmRequest 叠加多个 ipcRenderer.on 监听 */
 let hitlConfirmBridge: ((event: IpcRendererEvent, data: unknown) => void) | null = null;
+/** 单槽：避免重复注册导致的多次回调（与 React effect 频繁重跑兼容） */
+let agentMessageBridge: ((event: IpcRendererEvent, data: unknown) => void) | null = null;
+let agentToolCallBridge: ((event: IpcRendererEvent, data: unknown) => void) | null = null;
+let agentTokenUsageBridge: ((event: IpcRendererEvent, data: unknown) => void) | null = null;
+let agentTtsProgressBridge: ((event: IpcRendererEvent, data: unknown) => void) | null = null;
+let agentBatchProgressBridge: ((event: IpcRendererEvent, data: unknown) => void) | null = null;
+let agentTodoUpdateBridge: ((event: IpcRendererEvent, data: unknown) => void) | null = null;
+let agentStepResultBridge: ((event: IpcRendererEvent, data: unknown) => void) | null = null;
+let agentQuotaExceededBridge: ((event: IpcRendererEvent, data: unknown) => void) | null = null;
+let agentWorkspaceFileAddedBridge: ((event: IpcRendererEvent, data: unknown) => void) | null = null;
 
 // 暴露安全的 API 给渲染进程
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -36,31 +46,76 @@ contextBridge.exposeInMainWorld('electronAPI', {
     sendMessage: (message: string, sessionId?: string) =>
       ipcRenderer.invoke('agent:sendMessage', message, sessionId),
     onMessage: (callback: (data: any) => void) => {
-      ipcRenderer.on('agent:message', (_event, data) => callback(data));
+      if (agentMessageBridge) {
+        ipcRenderer.removeListener('agent:message', agentMessageBridge);
+        agentMessageBridge = null;
+      }
+      agentMessageBridge = (_event, data) => callback(data);
+      ipcRenderer.on('agent:message', agentMessageBridge);
     },
     onToolCall: (callback: (data: { threadId: string; messageId?: string; toolCalls: import('../src/types/types').ToolCall[] }) => void) => {
-      ipcRenderer.on('agent:toolCall', (_event, data) => callback(data));
+      if (agentToolCallBridge) {
+        ipcRenderer.removeListener('agent:toolCall', agentToolCallBridge);
+        agentToolCallBridge = null;
+      }
+      agentToolCallBridge = (_event, data) => callback(data as any);
+      ipcRenderer.on('agent:toolCall', agentToolCallBridge);
     },
     onTokenUsage: (callback: (data: import('../src/types/types').AgentTokenUsageEvent) => void) => {
-      ipcRenderer.on('agent:tokenUsage', (_event, data) => callback(data));
+      if (agentTokenUsageBridge) {
+        ipcRenderer.removeListener('agent:tokenUsage', agentTokenUsageBridge);
+        agentTokenUsageBridge = null;
+      }
+      agentTokenUsageBridge = (_event, data) => callback(data as import('../src/types/types').AgentTokenUsageEvent);
+      ipcRenderer.on('agent:tokenUsage', agentTokenUsageBridge);
     },
     onTtsProgress: (callback: (data: { threadId: string; messageId?: string; toolCallId?: string; current: number; total: number; path: string }) => void) => {
-      ipcRenderer.on('agent:ttsProgress', (_event, data) => callback(data));
+      if (agentTtsProgressBridge) {
+        ipcRenderer.removeListener('agent:ttsProgress', agentTtsProgressBridge);
+        agentTtsProgressBridge = null;
+      }
+      agentTtsProgressBridge = (_event, data) => callback(data as any);
+      ipcRenderer.on('agent:ttsProgress', agentTtsProgressBridge);
     },
     onBatchProgress: (callback: (data: { threadId: string; messageId?: string; toolCallId?: string; progress: import('../src/types/types').BatchProgress }) => void) => {
-      ipcRenderer.on('agent:batchProgress', (_event, data) => callback(data));
+      if (agentBatchProgressBridge) {
+        ipcRenderer.removeListener('agent:batchProgress', agentBatchProgressBridge);
+        agentBatchProgressBridge = null;
+      }
+      agentBatchProgressBridge = (_event, data) => callback(data as any);
+      ipcRenderer.on('agent:batchProgress', agentBatchProgressBridge);
     },
     onTodoUpdate: (callback: (data: any) => void) => {
-      ipcRenderer.on('agent:todoUpdate', (_event, data) => callback(data));
+      if (agentTodoUpdateBridge) {
+        ipcRenderer.removeListener('agent:todoUpdate', agentTodoUpdateBridge);
+        agentTodoUpdateBridge = null;
+      }
+      agentTodoUpdateBridge = (_event, data) => callback(data);
+      ipcRenderer.on('agent:todoUpdate', agentTodoUpdateBridge);
     },
     onStepResult: (callback: (data: { threadId: string; messageId: string; stepResults: Array<{ type: 'image' | 'audio' | 'document'; payload: Record<string, unknown> }> }) => void) => {
-      ipcRenderer.on('agent:stepResult', (_event, data) => callback(data));
+      if (agentStepResultBridge) {
+        ipcRenderer.removeListener('agent:stepResult', agentStepResultBridge);
+        agentStepResultBridge = null;
+      }
+      agentStepResultBridge = (_event, data) => callback(data as any);
+      ipcRenderer.on('agent:stepResult', agentStepResultBridge);
     },
     onQuotaExceeded: (callback: (data: any) => void) => {
-      ipcRenderer.on('agent:quotaExceeded', (_event, data) => callback(data));
+      if (agentQuotaExceededBridge) {
+        ipcRenderer.removeListener('agent:quotaExceeded', agentQuotaExceededBridge);
+        agentQuotaExceededBridge = null;
+      }
+      agentQuotaExceededBridge = (_event, data) => callback(data);
+      ipcRenderer.on('agent:quotaExceeded', agentQuotaExceededBridge);
     },
     onWorkspaceFileAdded: (callback: (data: { sessionId: string; category: string }) => void) => {
-      ipcRenderer.on('agent:workspaceFileAdded', (_event, data) => callback(data));
+      if (agentWorkspaceFileAddedBridge) {
+        ipcRenderer.removeListener('agent:workspaceFileAdded', agentWorkspaceFileAddedBridge);
+        agentWorkspaceFileAddedBridge = null;
+      }
+      agentWorkspaceFileAddedBridge = (_event, data) => callback(data as any);
+      ipcRenderer.on('agent:workspaceFileAdded', agentWorkspaceFileAddedBridge);
     },
     stopStream: () => ipcRenderer.invoke('agent:stopStream'),
   },

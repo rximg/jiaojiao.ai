@@ -105,6 +105,19 @@ async function sendAgentMessage(
       onMessage: (newThreadId: string, messages: any[]) => {
         mainWindow.webContents.send('agent:message', { threadId: newThreadId, messages });
       },
+      onTokenUsage: (
+        newThreadId: string,
+        messageId: string | undefined,
+        completionTokens: number,
+        isFinal?: boolean
+      ) => {
+        mainWindow.webContents.send('agent:tokenUsage', {
+          threadId: newThreadId,
+          messageId,
+          completionTokens,
+          ...(typeof isFinal === 'boolean' ? { isFinal } : {}),
+        });
+      },
       onStepResult: (newThreadId: string, messageId: string, stepResults: any[]) => {
         mainWindow.webContents.send('agent:stepResult', { threadId: newThreadId, messageId, stepResults });
       },
