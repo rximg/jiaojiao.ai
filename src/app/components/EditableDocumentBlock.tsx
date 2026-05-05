@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { FileText } from 'lucide-react';
 
 interface EditableDocumentBlockProps {
@@ -16,6 +16,8 @@ interface EditableDocumentBlockProps {
   disabled?: boolean;
   /** 为 true 时不渲染顶部标题行（由外层统一展示标题） */
   hideTitleRow?: boolean;
+  /** 自动随内容增高（避免内部滚动条），用于长文编辑 */
+  autoGrow?: boolean;
 }
 
 /**
@@ -30,18 +32,38 @@ export default function EditableDocumentBlock({
   minRows = 6,
   disabled = false,
   hideTitleRow = false,
+  autoGrow = false,
 }: EditableDocumentBlockProps) {
   const [localValue, setLocalValue] = useState(value);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     setLocalValue(value);
   }, [value]);
+
+  const adjustHeight = useCallback(() => {
+    if (!autoGrow) return;
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [autoGrow]);
+
+  useEffect(() => {
+    adjustHeight();
+  }, [adjustHeight, localValue]);
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       const next = e.target.value;
       setLocalValue(next);
       onChange(next);
+      // 输入过程中即时调整高度，避免出现滚动条闪烁
+      if (autoGrow) {
+        const el = e.currentTarget;
+        el.style.height = 'auto';
+        el.style.height = `${el.scrollHeight}px`;
+      }
     },
     [onChange]
   );
@@ -55,12 +77,16 @@ export default function EditableDocumentBlock({
         </div>
       )}
       <textarea
+        ref={textareaRef}
         value={localValue}
         onChange={handleChange}
         placeholder={placeholder}
         disabled={disabled}
-        rows={minRows}
-        className="w-full resize-y min-h-0 px-3 py-2 text-xs whitespace-pre-wrap break-words rounded-b-lg bg-background/80 border-0 focus:ring-1 focus:ring-primary/50 focus:outline-none font-sans disabled:opacity-80 disabled:cursor-not-allowed"
+        rows={autoGrow ? 1 : minRows}
+        className={[
+          'w-full min-h-0 px-3 py-2 text-xs whitespace-pre-wrap break-words rounded-b-lg bg-background/80 border-0 focus:ring-1 focus:ring-primary/50 focus:outline-none font-sans disabled:opacity-80 disabled:cursor-not-allowed',
+          autoGrow ? 'resize-none overflow-hidden' : 'resize-y',
+        ].join(' ')}
       />
     </div>
   );

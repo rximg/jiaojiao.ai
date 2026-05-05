@@ -4,6 +4,7 @@ import {
   isRenderableMessage,
   mergeToolCallsIntoMessages,
   sanitizeMessages,
+  shouldSuppressAssistantPlanMessage,
 } from '../../../src/lib/chat-messages';
 
 function createAssistantMessage(overrides: Partial<Message> = {}): Message {
@@ -156,5 +157,55 @@ describe('chat message visibility', () => {
         status: 'pending',
       },
     ]);
+  });
+
+  it('suppresses duplicate assistant plan text when followed by story.plan_review HITL block', () => {
+    const assistantPlan: Message = {
+      id: 'assistant-plan',
+      role: 'assistant',
+      content: '## 策划稿\n\n- A\n- B\n\n结尾',
+      timestamp: new Date('2026-03-23T00:00:00.000Z'),
+    };
+    const hitl: Message = {
+      id: 'hitl-1',
+      role: 'assistant',
+      content: '',
+      timestamp: new Date('2026-03-23T00:00:00.000Z'),
+      hitlBlock: {
+        requestId: 'rid-1',
+        actionType: 'story.plan_review',
+        payload: {
+          title: '绘本故事策划稿',
+          markdownContent: '## 策划稿\n\n- A\n- B\n\n结尾',
+          allowEdit: true,
+        },
+        status: 'pending',
+      },
+    };
+
+    expect(shouldSuppressAssistantPlanMessage([assistantPlan, hitl], 0)).toBe(true);
+  });
+
+  it('does not suppress unrelated assistant text even if followed by story.plan_review', () => {
+    const assistant: Message = {
+      id: 'assistant-ctx',
+      role: 'assistant',
+      content: '我将为你生成策划稿，请稍候。',
+      timestamp: new Date('2026-03-23T00:00:00.000Z'),
+    };
+    const hitl: Message = {
+      id: 'hitl-2',
+      role: 'assistant',
+      content: '',
+      timestamp: new Date('2026-03-23T00:00:00.000Z'),
+      hitlBlock: {
+        requestId: 'rid-2',
+        actionType: 'story.plan_review',
+        payload: { markdownContent: '## 策划稿\n\n- A\n- B\n\n结尾' },
+        status: 'pending',
+      },
+    };
+
+    expect(shouldSuppressAssistantPlanMessage([assistant, hitl], 0)).toBe(false);
   });
 });

@@ -111,10 +111,13 @@ export default function HitlConfirmBlock({
   const [editableMarkdownContent, setEditableMarkdownContent] = useState('');
   /** story.plan_review：默认展开；仅当正文超过摘要阈值时可收起 */
   const [planReviewExpanded, setPlanReviewExpanded] = useState(true);
+  /** story.plan_review：Preview/ Edit 切换（仅 allowEdit 且 pending 有意义） */
+  const [planReviewMode, setPlanReviewMode] = useState<'preview' | 'edit'>('preview');
 
   useEffect(() => {
     if (request.actionType !== 'story.plan_review') return;
     setPlanReviewExpanded(true);
+    setPlanReviewMode('preview');
   }, [request.actionType, request.requestId]);
 
   /** 从持久化 draftEdits 恢复编辑态（换 session / 刷新后） */
@@ -538,6 +541,7 @@ export default function HitlConfirmBlock({
       const markdownContent = typeof payload.markdownContent === 'string' ? payload.markdownContent : '';
       const documentTitle = typeof payload.title === 'string' ? payload.title : '绘本故事策划稿';
       const allowEdit = payload.allowEdit === true;
+      const effectiveMode: 'preview' | 'edit' = resolved || !allowEdit ? 'preview' : planReviewMode;
       const sourceText = resolved ? markdownContent : allowEdit ? editableMarkdownContent : markdownContent;
       const { excerpt, needsToggle } = planReviewCollapsedExcerpt(sourceText);
       const showCollapsed = needsToggle && !planReviewExpanded;
@@ -545,24 +549,51 @@ export default function HitlConfirmBlock({
       const headerRow = (opts: { mode: 'collapsed' | 'expanded' }) => (
         <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-border/50">
           <span className="text-sm font-medium text-foreground min-w-0">{documentTitle}</span>
-          {needsToggle &&
-            (opts.mode === 'collapsed' ? (
-              <button
-                type="button"
-                onClick={() => setPlanReviewExpanded(true)}
-                className="text-sm text-primary hover:underline shrink-0"
-              >
-                展开全文
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setPlanReviewExpanded(false)}
-                className="text-sm text-primary hover:underline shrink-0"
-              >
-                收起
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {/* Preview/Edit：仅 pending 且 allowEdit 时显示 */}
+            {!resolved && allowEdit && opts.mode === 'expanded' && (
+              <div className="inline-flex rounded-md border border-border overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setPlanReviewMode('preview')}
+                  className={[
+                    'px-2.5 py-1 text-xs transition-colors',
+                    effectiveMode === 'preview' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted/80',
+                  ].join(' ')}
+                >
+                  Preview
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPlanReviewMode('edit')}
+                  className={[
+                    'px-2.5 py-1 text-xs transition-colors border-l border-border',
+                    effectiveMode === 'edit' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted/80',
+                  ].join(' ')}
+                >
+                  Edit
+                </button>
+              </div>
+            )}
+            {needsToggle &&
+              (opts.mode === 'collapsed' ? (
+                <button
+                  type="button"
+                  onClick={() => setPlanReviewExpanded(true)}
+                  className="text-sm text-primary hover:underline"
+                >
+                  展开全文
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setPlanReviewExpanded(false)}
+                  className="text-sm text-primary hover:underline"
+                >
+                  收起
+                </button>
+              ))}
+          </div>
         </div>
       );
 
@@ -586,14 +617,19 @@ export default function HitlConfirmBlock({
           {resolved ? (
             <MarkdownDocumentBlock content={markdownContent} hideTitle />
           ) : allowEdit ? (
-            <EditableDocumentBlock
-              value={editableMarkdownContent}
-              onChange={setEditableMarkdownContent}
-              title={documentTitle}
-              placeholder="输入或编辑绘本故事策划稿 Markdown..."
-              minRows={16}
-              hideTitleRow
-            />
+            effectiveMode === 'preview' ? (
+              <MarkdownDocumentBlock content={editableMarkdownContent} hideTitle />
+            ) : (
+              <EditableDocumentBlock
+                value={editableMarkdownContent}
+                onChange={setEditableMarkdownContent}
+                title={documentTitle}
+                placeholder="输入或编辑绘本故事策划稿 Markdown..."
+                minRows={16}
+                hideTitleRow
+                autoGrow
+              />
+            )
           ) : (
             <MarkdownDocumentBlock content={markdownContent} hideTitle />
           )}

@@ -10,7 +10,7 @@ import HitlModeDialog, { type HitlPolicy, type HitlMode } from './HitlModeDialog
 import TodoPanel from './TodoPanel';
 import WorkspacePanel from './WorkspacePanel';
 import { useChat } from '../../providers/ChatProvider';
-import { isRenderableMessage } from '../../lib/chat-messages';
+import { isRenderableMessage, shouldSuppressAssistantPlanMessage } from '../../lib/chat-messages';
 import { isHitlPending } from '../../lib/hitl-block';
 
 interface ChatInterfaceProps {
@@ -57,7 +57,12 @@ export default function ChatInterface({
     rejectStaleHitl,
     ttsProgressLive,
   } = useChat();
-  const visibleMessages = messages.filter((message) => message.role !== 'assistant' || isRenderableMessage(message));
+  const visibleMessages = messages.filter((message, idx) => {
+    if (message.role === 'assistant' && shouldSuppressAssistantPlanMessage(messages, idx)) {
+      return false;
+    }
+    return message.role !== 'assistant' || isRenderableMessage(message);
+  });
   const waitingForLiveHitl = Boolean(pendingHitlRequest);
   const hasStaleHitl = messages.some((m) => m.hitlBlock && isHitlPending(m.hitlBlock));
   const [showWelcome, setShowWelcome] = useState(true);

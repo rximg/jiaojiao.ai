@@ -54,13 +54,21 @@ export interface HITLResponse {
 export class HITLService {
   private pendingRequests = new Map<string, HITLRequest>();
   private config: HITLConfig;
+  /**
+   * 串行化同一 session 内的 requestApproval 调用。
+   * UI 侧一次只允许处理一个确认弹窗，因此这里用队列避免并发调用直接抛错导致 run 中断。
+   */
+  private approvalQueue: Promise<void> = Promise.resolve();
+  private confirmationRequester?: (request: HITLRequest) => Promise<HITLResponse>;
   
   constructor(
     private sessionId: string,
     private logManager?: LogManager,
-    config?: Partial<HITLConfig>
+    config?: Partial<HITLConfig>,
+    confirmationRequester?: (request: HITLRequest) => Promise<HITLResponse>
   ) {
     this.config = { ...DEFAULT_HITL_CONFIG, ...config };
+    this.confirmationRequester = confirmationRequester;
   }
   
   private async getExecutionPolicy(): Promise<HitlExecutionPolicy> {
@@ -126,18 +134,21 @@ export class HITLService {
     actionType: string,
     payload: Record<string, any>
   ): Promise<Record<string, unknown> | null> {
+    // 先入队，确保同一会话只会有一个 pending 请求
+    const prev = this.approvalQueue;
+    let release: (() => void) | undefined;
+    this.approvalQueue = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await prev.catch(() => undefined);
+
+    try {
     const policy = await this.getExecutionPolicy();
 
     if (shouldAutoApprove(policy.mode, policy.allowlist, actionType)) {
       const decisionMode = policy.mode === 'auto' ? 'auto' : 'allowlist-hit';
       await this.logAutoApproval(actionType, payload, decisionMode);
       return { ...payload };
-    }
-
-    if (this.pendingRequests.size > 0) {
-      throw new Error(
-        `HITL: concurrent requestApproval not allowed for session ${this.sessionId}; respond to the pending confirmation first`
-      );
     }
 
     const rule = getHITLRule(actionType, this.config);
@@ -208,6 +219,9 @@ export class HITLService {
     } finally {
       this.pendingRequests.delete(request.requestId);
     }
+    } finally {
+      release?.();
+    }
   }
   
   /**
@@ -215,6 +229,9 @@ export class HITLService {
    */
   private async sendConfirmationRequest(request: HITLRequest): Promise<HITLResponse> {
     try {
+      if (this.confirmationRequester) {
+        return await this.confirmationRequester(request);
+      }
       const { BrowserWindow } = await import('electron');
 
       const win = BrowserWindow.getAllWindows()[0];
