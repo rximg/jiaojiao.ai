@@ -100,7 +100,8 @@ function extractStepResultsFromContent(content: string): StepResult[] {
     /(?:outputs[/\\]workspaces[/\\][^/\\]+[/\\]images[/\\][^\s\n]+\.(?:png|jpg|jpeg))/gi,
     /(?:images[/\\][^\s\n]+\.(?:png|jpg|jpeg))/gi,
     /([A-Za-z]:[\\/][^\s\n]+\.(?:png|jpg|jpeg))/g,
-    /(\/[^\s\n]+\.(?:png|jpg|jpeg))/g,
+    // POSIX 绝对路径：至少包含一层目录，避免把 "/foo.png" 这种“前导斜杠的相对路径”误当成根目录文件
+    /(\/[^/\s\n]+\/[^\s\n]+\.(?:png|jpg|jpeg))/g,
   ];
   const seenImages = new Set<string>();
   for (const re of imagePatterns) {
@@ -119,7 +120,8 @@ function extractStepResultsFromContent(content: string): StepResult[] {
     /(?:outputs[/\\]workspaces[/\\][^/\\]+[/\\]audio[/\\][^\s\n]+\.(?:mp3|wav))/gi,
     /(?:audio[/\\][^\s\n]+\.(?:mp3|wav))/gi,
     /([A-Za-z]:[\\/][^\s\n]+\.(?:mp3|wav))/g,
-    /(\/[^\s\n]+\.(?:mp3|wav))/g,
+    // 同上：POSIX 绝对路径至少一层目录
+    /(\/[^/\s\n]+\/[^\s\n]+\.(?:mp3|wav))/g,
   ];
   const seenAudio = new Set<string>();
   for (const re of audioPatterns) {
@@ -167,6 +169,32 @@ function shouldEmitAssistantMessage(content: string, stepResults: StepResult[]):
     return false;
   }
   return content.trim().length > 0 || stepResults.length > 0;
+}
+
+function normalizeStepResultKey(sr: StepResult): string {
+  const raw =
+    sr.type === 'document'
+      ? sr.payload.pathOrContent
+      : sr.type === 'image'
+        ? sr.payload.path
+        : sr.payload.path;
+  return `${sr.type}:${String(raw ?? '')
+    .trim()
+    .replace(/^local-file:\/\//, '')
+    .replace(/\\/g, '/')
+    .toLowerCase()}`;
+}
+
+function dedupeStepResults(stepResults: StepResult[]): StepResult[] {
+  const seen = new Set<string>();
+  const out: StepResult[] = [];
+  for (const sr of stepResults) {
+    const k = normalizeStepResultKey(sr);
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    out.push(sr);
+  }
+  return out;
 }
 
 /**
@@ -245,6 +273,9 @@ export async function invokeAgentUseCase(
         let stepResults = extractStepResultsFromContent(content);
         if (resolveStepResultPaths && stepResults.length > 0) {
           stepResults = await resolveStepResultPaths(sessionId, stepResults);
+        }
+        if (stepResults.length > 0) {
+          stepResults = dedupeStepResults(stepResults);
         }
         // 不向 UI 推送某些 assistant 片段（如空内容轮次、策划稿 JSON），但不得 skip 本 chunk 后续的
         // onToolCall / onTodoUpdate，否则同一 state 里的 todos 更新会被 continue 吞掉。
