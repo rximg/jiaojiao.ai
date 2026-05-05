@@ -2,7 +2,10 @@
  * Preload API 定义与类型。实际被 Electron 加载的是 preload.cjs（CJS），
  * 因预加载脚本必须为 CommonJS。修改 API 时请同步更新 preload.cjs。
  */
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+
+/** 单槽：避免多次 onConfirmRequest 叠加多个 ipcRenderer.on 监听 */
+let hitlConfirmBridge: ((event: IpcRendererEvent, data: unknown) => void) | null = null;
 
 // 暴露安全的 API 给渲染进程
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -61,7 +64,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // HITL 人工确认（统一通道）
   hitl: {
     onConfirmRequest: (callback: (data: { requestId: string; actionType: string; payload: Record<string, unknown> }) => void) => {
-      ipcRenderer.on('hitl:confirmRequest', (_event, data) => callback(data));
+      if (hitlConfirmBridge) {
+        ipcRenderer.removeListener('hitl:confirmRequest', hitlConfirmBridge);
+        hitlConfirmBridge = null;
+      }
+      hitlConfirmBridge = (_event, data) =>
+        callback(data as { requestId: string; actionType: string; payload: Record<string, unknown> });
+      ipcRenderer.on('hitl:confirmRequest', hitlConfirmBridge);
+    },
+    offConfirmRequest: () => {
+      if (hitlConfirmBridge) {
+        ipcRenderer.removeListener('hitl:confirmRequest', hitlConfirmBridge);
+        hitlConfirmBridge = null;
+      }
     },
     respond: (requestId: string, response: { approved: boolean; reason?: string; payload?: Record<string, unknown> }) =>
       ipcRenderer.invoke('hitl:respond', requestId, response),
@@ -134,6 +149,7 @@ declare global {
       };
       hitl: {
         onConfirmRequest: (callback: (data: { requestId: string; actionType: string; payload: Record<string, unknown> }) => void) => void;
+        offConfirmRequest: () => void;
         respond: (requestId: string, response: { approved: boolean; reason?: string; payload?: Record<string, unknown> }) => Promise<{ success: boolean }>;
         getPolicy: () => Promise<{ mode: 'auto' | 'allowlist' | 'strict'; allowlist: string[] }>;
         setMode: (mode: 'auto' | 'allowlist' | 'strict') => Promise<{ mode: 'auto' | 'allowlist' | 'strict'; allowlist: string[] }>;

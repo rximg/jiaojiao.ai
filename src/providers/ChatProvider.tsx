@@ -60,6 +60,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const skipNextAutoSaveRef = useRef(false);
   const allMessagesRef = useRef<Message[]>([]);
   const pendingHitlRequestRef = useRef<typeof pendingHitlRequest>(null);
+  /** 防止同一次 hitl:confirmRequest 被多 handler 同步重复插入 */
+  const liveHitlInsertLockRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     pendingHitlRequestRef.current = pendingHitlRequest;
@@ -243,8 +245,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     const handleHitlConfirm = (data: { requestId: string; actionType: string; payload: Record<string, unknown> }) => {
       console.log('[renderer] received hitl:confirmRequest:', data);
+      if (liveHitlInsertLockRef.current.has(data.requestId)) {
+        console.warn('[hitl] 忽略重复的 confirmRequest（同 requestId 已处理或正在插入）');
+        return;
+      }
       if (pendingHitlRequestRef.current) {
         console.warn('[hitl] 忽略并发 confirmRequest：已有未完成的 Live HITL');
+        return;
+      }
+      liveHitlInsertLockRef.current.add(data.requestId);
+      if (allMessagesRef.current.some((m) => m.hitlBlock?.requestId === data.requestId)) {
+        liveHitlInsertLockRef.current.delete(data.requestId);
         return;
       }
       const messageId = `hitl-pending-${data.requestId}`;
@@ -409,7 +420,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
 
     return () => {
-      // 无法移除监听，因为 preload 未暴露 off；依赖单次注册
+      if (typeof window.electronAPI.hitl?.offConfirmRequest === 'function') {
+        window.electronAPI.hitl.offConfirmRequest();
+      }
     };
   }, [attachArtifactsToTodos, currentSessionId]);
 
@@ -418,41 +431,44 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     const basePayload = pending?.payload ?? {};
     const finalPayload =
       approved && editedPayload ? { ...basePayload, ...editedPayload } : { ...basePayload };
-    const messageId = pending?.messageId;
-    if (pending && pending.requestId === requestId && messageId) {
-      setMessages((prev) => {
-        const next = prev.map((m) => {
-          if (m.id !== messageId || m.hitlBlock?.requestId !== requestId) return m;
-          return {
-            ...m,
-            hitlBlock: {
-              ...m.hitlBlock!,
-              payload: finalPayload,
-              status: approved ? ('approved' as const) : ('rejected' as const),
-              resolvedAt: new Date().toISOString(),
-              draftEdits: undefined,
-              reason: !approved && cancelReason?.trim() ? cancelReason.trim() : undefined,
-              approved: undefined,
-            },
-          };
+    try {
+      if (pending && pending.requestId === requestId) {
+        setMessages((prev) => {
+          const next = prev.map((m) => {
+            if (m.hitlBlock?.requestId !== requestId) return m;
+            return {
+              ...m,
+              hitlBlock: {
+                ...m.hitlBlock!,
+                payload: finalPayload,
+                status: approved ? ('approved' as const) : ('rejected' as const),
+                resolvedAt: new Date().toISOString(),
+                draftEdits: undefined,
+                reason: !approved && cancelReason?.trim() ? cancelReason.trim() : undefined,
+                approved: undefined,
+              },
+            };
+          });
+          allMessagesRef.current = next;
+          return next;
         });
-        allMessagesRef.current = next;
-        return next;
-      });
-    }
-    setPendingHitlRequest(null);
-    console.log('[renderer] responding to HITL with:', requestId, approved, editedPayload ? '(with edited payload)' : '', cancelReason ? '(cancel reason)' : '');
-    if (typeof window.electronAPI.hitl?.respond === 'function') {
-      const response: { approved: boolean; payload?: Record<string, unknown>; reason?: string } = { approved };
-      if (approved && editedPayload && Object.keys(editedPayload).length > 0) {
-        response.payload = editedPayload;
       }
-      if (!approved && cancelReason?.trim()) {
-        response.reason = cancelReason.trim();
+      setPendingHitlRequest(null);
+      console.log('[renderer] responding to HITL with:', requestId, approved, editedPayload ? '(with edited payload)' : '', cancelReason ? '(cancel reason)' : '');
+      if (typeof window.electronAPI.hitl?.respond === 'function') {
+        const response: { approved: boolean; payload?: Record<string, unknown>; reason?: string } = { approved };
+        if (approved && editedPayload && Object.keys(editedPayload).length > 0) {
+          response.payload = editedPayload;
+        }
+        if (!approved && cancelReason?.trim()) {
+          response.reason = cancelReason.trim();
+        }
+        await window.electronAPI.hitl.respond(requestId, response);
+      } else {
+        console.warn('[hitl] respond not available in preload');
       }
-      await window.electronAPI.hitl.respond(requestId, response);
-    } else {
-      console.warn('[hitl] respond not available in preload');
+    } finally {
+      liveHitlInsertLockRef.current.delete(requestId);
     }
   }, []);
 
@@ -508,6 +524,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       console.log('[ChatProvider] Session created:', sessionId);
       setCurrentSessionId(sessionId);
       // 清空消息和todos
+      liveHitlInsertLockRef.current.clear();
       setMessages([]);
       setTodos([]);
       return sessionId;
@@ -620,6 +637,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         }
       }
       setPendingHitlRequest(null);
+      liveHitlInsertLockRef.current.clear();
 
       // 单 session 模式：切换 session 前先关闭旧 runtime
       if (currentSessionId && currentSessionId !== sessionId) {
@@ -718,6 +736,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     
     setCurrentSessionId(null);
     setPendingHitlRequest(null);
+    liveHitlInsertLockRef.current.clear();
     setIsLoading(false);
     setTtsProgressLive(null);
     setMessages([]);

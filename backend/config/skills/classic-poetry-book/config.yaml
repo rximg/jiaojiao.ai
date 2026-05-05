@@ -1,0 +1,69 @@
+name: classic_poetry_book_agent
+version: 1.0.0
+description: 古诗词绘本：选定诗词 → 可执行方案（含注音与封面 T2I）经 HITL → TTS、文生图、注音叠层 → 核对产物
+
+case:
+  id: classic_poetry_book
+  title: 古诗词绘本
+  description: 选定古诗词后生成方案（全文、注音、封面插画提示词），确认后自动朗读、意境图与注音叠字
+  order: 3
+  cover: cover.png
+
+agent:
+  name: classic_poetry_book_agent
+  version: 1.0.0
+  type: main_agent
+
+runtime:
+  prompt:
+    source: skill_md
+  middlewares:
+    deepagent_skill:
+      enabled: true
+    checkpoint:
+      enabled: true
+    subagent:
+      enabled: false
+
+tools:
+  request_story_plan_review: {}
+  delete_artifacts: {}
+  generate_image:
+    enable: true
+    config_path: ./tools/t2i.yaml
+  suggest_caption_regions:
+    enable: true
+    config_path: ./tools/vl_caption_regions.yaml
+  compose_caption_overlay_on_image: {}
+  generate_audio:
+    enable: true
+    config_path: ./tools/tts.yaml
+  batch_tool_call: {}
+  finalize_workflow: {}
+
+sub_agents: {}
+
+ui:
+  welcome:
+    title: 欢迎使用古诗词绘本助手
+    subtitle: 先一起选定诗词与全文，再确认《古诗词绘本方案.md》，然后为您生成朗读、意境插画与带拼音的画面
+    instructions:
+      title: 请告诉我
+      items:
+        - 想制作的诗词：诗名、作者或名句（如：静夜思、李白、床前明月光）
+        - 读者年龄（可选）：用于朗读语速与叠字字号感受（如：5岁、亲子共读）
+        - 画面偏好（可选）：如水墨、工笔、绘本插画风
+    footer: 若只说诗名或一句诗，我会先帮您确认是「哪一首」再进入方案。
+  quick_options:
+    - label: 静夜思 · 李白
+      description: 经典五言绝句
+      prompt: 给5岁孩子做李白的《静夜思》绘本，插画风
+    - label: 春晓 · 孟浩然
+      description: 春日意象
+      prompt: 亲子共读《春晓》，水墨意境
+    - label: 咏鹅 · 骆宾王
+      description: 低幼启蒙
+      prompt: 3岁宝宝《咏鹅》，明亮卡通绘本
+    - label: 登鹳雀楼 · 王之涣
+      description: 登高望远
+      prompt: 做《登鹳雀楼》古诗词绘本，写实风景插画

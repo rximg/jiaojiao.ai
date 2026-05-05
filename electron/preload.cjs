@@ -1,5 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+/** 单槽：避免多次 onConfirmRequest 叠加多个 ipcRenderer.on 监听（与 preload.ts 一致） */
+let hitlConfirmBridge = null;
+
 // 暴露安全的 API 给渲染进程（与 preload.ts 保持一致，Electron 预加载必须用 CJS）
 contextBridge.exposeInMainWorld('electronAPI', {
   config: {
@@ -52,7 +55,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   hitl: {
     onConfirmRequest: (callback) => {
-      ipcRenderer.on('hitl:confirmRequest', (_event, data) => callback(data));
+      if (hitlConfirmBridge) {
+        ipcRenderer.removeListener('hitl:confirmRequest', hitlConfirmBridge);
+        hitlConfirmBridge = null;
+      }
+      hitlConfirmBridge = (_event, data) => callback(data);
+      ipcRenderer.on('hitl:confirmRequest', hitlConfirmBridge);
+    },
+    offConfirmRequest: () => {
+      if (hitlConfirmBridge) {
+        ipcRenderer.removeListener('hitl:confirmRequest', hitlConfirmBridge);
+        hitlConfirmBridge = null;
+      }
     },
     respond: (requestId, response) =>
       ipcRenderer.invoke('hitl:respond', requestId, response),

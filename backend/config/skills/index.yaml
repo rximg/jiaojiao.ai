@@ -6,3 +6,5 @@ cases:
     skill_name: story-book
   behavior_correction:
     skill_name: behavior-correction
+  classic_poetry_book:
+    skill_name: classic-poetry-book

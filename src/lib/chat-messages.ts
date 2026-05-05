@@ -59,6 +59,23 @@ export function mergeToolCallsIntoMessages(
   );
 }
 
+/** 同一会话内同一 HITL requestId 只保留首条，修复多路监听等导致的重复落盘 */
+export function dedupeHitlMessagesByRequestId(messages: Message[]): Message[] {
+  const seen = new Set<string>();
+  return messages.filter((message) => {
+    const rid = message.hitlBlock?.requestId;
+    if (!rid) {
+      return true;
+    }
+    if (seen.has(rid)) {
+      return false;
+    }
+    seen.add(rid);
+    return true;
+  });
+}
+
 export function sanitizeMessages(messages: Message[]): Message[] {
-  return messages.filter((message) => message.role !== 'assistant' || isRenderableMessage(message));
+  const filtered = messages.filter((message) => message.role !== 'assistant' || isRenderableMessage(message));
+  return dedupeHitlMessagesByRequestId(filtered);
 }

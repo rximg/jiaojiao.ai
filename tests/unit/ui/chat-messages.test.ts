@@ -51,6 +51,37 @@ describe('chat message visibility', () => {
     ).toBe(true);
   });
 
+  it('dedupes assistant HITL rows that share the same requestId', () => {
+    const hitlBlock = {
+      requestId: 'rid-dup',
+      actionType: 'story.plan_review',
+      payload: {},
+      status: 'approved' as const,
+    };
+    const first = createAssistantMessage({ id: 'h1', hitlBlock });
+    const dup = createAssistantMessage({ id: 'h2', hitlBlock: { ...hitlBlock } });
+    const user: Message = {
+      id: 'user-1',
+      role: 'user',
+      content: '你好',
+      timestamp: new Date('2026-03-23T00:00:00.000Z'),
+    };
+    const out = sanitizeMessages([user, first, dup]);
+    expect(out.map((m) => m.id)).toEqual(['user-1', 'h1']);
+  });
+
+  it('keeps distinct HITL requestIds when sanitizing', () => {
+    const a = createAssistantMessage({
+      id: 'h1',
+      hitlBlock: { requestId: 'r1', actionType: 'ai.text2speech', payload: {}, status: 'pending' },
+    });
+    const b = createAssistantMessage({
+      id: 'h2',
+      hitlBlock: { requestId: 'r2', actionType: 'ai.text2speech', payload: {}, status: 'pending' },
+    });
+    expect(sanitizeMessages([a, b])).toHaveLength(2);
+  });
+
   it('removes empty assistant messages from persisted message lists', () => {
     const kept = createAssistantMessage({ id: 'assistant-keep', content: '有内容' });
     const hitl = createAssistantMessage({
