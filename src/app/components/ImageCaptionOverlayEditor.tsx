@@ -96,6 +96,7 @@ interface ImageCaptionOverlayEditorProps {
   boxes: CaptionOverlayBoxState[];
   style: CaptionOverlayEditorStyleState;
   allowEditCaptionText?: boolean;
+  renderMode?: 'ruby' | 'plain';
   onBoxesChange: (boxes: CaptionOverlayBoxState[]) => void;
   onStyleChange: (style: CaptionOverlayEditorStyleState) => void;
   latestBoxesRef?: React.MutableRefObject<CaptionOverlayBoxState[]>;
@@ -106,6 +107,7 @@ export default function ImageCaptionOverlayEditor({
   boxes,
   style,
   allowEditCaptionText = false,
+  renderMode = 'ruby',
   onBoxesChange,
   onStyleChange,
   latestBoxesRef: parentLatestRef,
@@ -277,19 +279,21 @@ export default function ImageCaptionOverlayEditor({
               }
             />
           </label>
-          <label className="flex items-center gap-1">
-            <span className="text-muted-foreground whitespace-nowrap">注音字号</span>
-            <input
-              type="number"
-              min={6}
-              max={48}
-              className="w-16 rounded border border-border bg-background px-2 py-0.5 text-xs"
-              value={localStyle.captionRubyFontSizePx}
-              onChange={(e) =>
-                pushStyle({ ...localStyle, captionRubyFontSizePx: Number(e.target.value) || 14 })
-              }
-            />
-          </label>
+          {renderMode === 'ruby' ? (
+            <label className="flex items-center gap-1">
+              <span className="text-muted-foreground whitespace-nowrap">注音字号</span>
+              <input
+                type="number"
+                min={6}
+                max={48}
+                className="w-16 rounded border border-border bg-background px-2 py-0.5 text-xs"
+                value={localStyle.captionRubyFontSizePx}
+                onChange={(e) =>
+                  pushStyle({ ...localStyle, captionRubyFontSizePx: Number(e.target.value) || 14 })
+                }
+              />
+            </label>
+          ) : null}
           <label className="flex items-center gap-1">
             <span className="text-muted-foreground whitespace-nowrap">背景颜色</span>
             <select
@@ -329,7 +333,7 @@ export default function ImageCaptionOverlayEditor({
             </select>
           </label>
         </div>
-        {allowEditCaptionText && (
+        {allowEditCaptionText && renderMode === 'ruby' && (
           <p className="text-xs text-amber-700 dark:text-amber-400">
             修改字幕后，注音（ruby）不会自动更新；严重不一致时请回到生成字幕步骤重新生成。
           </p>
@@ -355,7 +359,6 @@ export default function ImageCaptionOverlayEditor({
               const hPct = (box.h / imgSize.h) * 100;
               const scale = imgDisplayW > 0 ? imgDisplayW / imgSize.w : 1;
               const boxWpx = imgDisplayW > 0 ? (box.w / imgSize.w) * imgDisplayW : 0;
-              const visibleItems = visibleCaptionItemsForBox(box.items, localStyle, scale, boxWpx);
               const pad = localStyle.boxPaddingPx * scale;
               const textSizePx = localStyle.captionTextFontSizePx * scale;
               const rubySizePx = localStyle.captionRubyFontSizePx * scale;
@@ -407,39 +410,57 @@ export default function ImageCaptionOverlayEditor({
                         }}
                       />
                     ) : null}
-                    {visibleItems.map((it, j) => (
-                      <div
-                        key={`${box.lineIndex}-${j}-${it.char}`}
-                        className="flex flex-col items-center shrink-0"
-                        style={{ width: colWpx }}
-                      >
-                        <span
-                          className="text-center"
-                          style={{
-                            fontSize: rubySizePx,
-                            lineHeight: 1,
-                            color: localStyle.captionRubyColor,
-                            fontFamily: localStyle.fontFamily,
-                            ...strokeStyle,
-                          }}
+                    {renderMode === 'ruby' ? (
+                      visibleCaptionItemsForBox(box.items, localStyle, scale, boxWpx).map((it, j) => (
+                        <div
+                          key={`${box.lineIndex}-${j}-${it.char}`}
+                          className="flex flex-col items-center shrink-0"
+                          style={{ width: colWpx }}
                         >
-                          {it.reading || '\u00a0'}
-                        </span>
+                          <span
+                            className="text-center"
+                            style={{
+                              fontSize: rubySizePx,
+                              lineHeight: 1,
+                              color: localStyle.captionRubyColor,
+                              fontFamily: localStyle.fontFamily,
+                              ...strokeStyle,
+                            }}
+                          >
+                            {it.reading || '\u00a0'}
+                          </span>
+                          <span
+                            className="text-center"
+                            style={{
+                              fontSize: textSizePx,
+                              lineHeight: 1,
+                              marginTop: rowGapPx,
+                              color: localStyle.captionTextColor,
+                              fontFamily: localStyle.fontFamily,
+                              ...strokeStyle,
+                            }}
+                          >
+                            {it.char}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
                         <span
                           className="text-center"
                           style={{
                             fontSize: textSizePx,
-                            lineHeight: 1,
-                            marginTop: rowGapPx,
+                            lineHeight: 1.15,
                             color: localStyle.captionTextColor,
                             fontFamily: localStyle.fontFamily,
                             ...strokeStyle,
+                            wordBreak: 'break-word',
                           }}
                         >
-                          {it.char}
+                          {box.text}
                         </span>
                       </div>
-                    ))}
+                    )}
                   </div>
                   <button
                     type="button"
@@ -474,8 +495,12 @@ export default function ImageCaptionOverlayEditor({
       <div className="px-3 py-2 space-y-2 text-xs border-t border-border/50 max-h-48 overflow-auto">
         {localBoxes.map((box, i) => (
           <div key={box.lineIndex} className="rounded-md bg-background/60 p-2 border border-border/40">
-            <div className="text-muted-foreground mb-0.5">第 {i + 1} 行 · 只读注音预览</div>
-            <div className="text-[11px] leading-relaxed break-all opacity-90">{rubyPreview(box.items)}</div>
+            <div className="text-muted-foreground mb-0.5">
+              第 {i + 1} 行{renderMode === 'ruby' ? ' · 只读注音预览' : ''}
+            </div>
+            {renderMode === 'ruby' ? (
+              <div className="text-[11px] leading-relaxed break-all opacity-90">{rubyPreview(box.items)}</div>
+            ) : null}
             {allowEditCaptionText ? (
               <label className="block mt-1">
                 <span className="text-muted-foreground">字幕文字</span>

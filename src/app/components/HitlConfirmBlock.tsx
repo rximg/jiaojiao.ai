@@ -484,6 +484,8 @@ export default function HitlConfirmBlock({
     if (request.actionType === 'ai.image_caption_overlay') {
       const imagePath = typeof payload.imagePath === 'string' ? payload.imagePath : '';
       const allowEdit = payload.allowEditCaptionText === true;
+      const renderMode =
+        payload.renderMode === 'plain' || payload.renderMode === 'ruby' ? (payload.renderMode as 'plain' | 'ruby') : 'ruby';
       if (resolved) {
         return imagePath ? (
           <ImageBlock path={imagePath} sessionId={sessionId} />
@@ -500,6 +502,7 @@ export default function HitlConfirmBlock({
           boxes={captionOverlayBoxes}
           style={captionOverlayStyle}
           allowEditCaptionText={allowEdit}
+          renderMode={renderMode}
           onBoxesChange={(b) => {
             setCaptionOverlayBoxes(b);
             captionOverlayBoxesRef.current = b;

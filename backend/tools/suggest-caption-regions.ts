@@ -5,6 +5,7 @@ import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { getMultimodalPortAsync } from '../infrastructure/repositories.js';
 import type { GenerateScriptFromImageParams } from '#backend/domain/inference/types.js';
+import { defaultNormalizedCaptionRect } from '../services/caption-region-geometry.js';
 import type { ToolConfig, ToolContext } from './registry.js';
 import { registerTool } from './registry.js';
 
@@ -42,12 +43,38 @@ function create(config: ToolConfig, context: ToolContext) {
       const vlUserPrompt = [userExtra, ctxBlock].filter(Boolean).join('\n') || undefined;
 
       const port = await getMultimodalPortAsync();
-      return port.generateScriptFromImage({
+      const result = await port.generateScriptFromImage({
         imagePath,
         sessionId,
         userPrompt: vlUserPrompt,
         prompt: promptFromConfig,
       } as GenerateScriptFromImageParams);
+
+      const expectedCount = contextLines.length;
+      if (!expectedCount || !Array.isArray((result as { lines?: unknown }).lines)) {
+        return result;
+      }
+
+      const origLines = (result as { lines: Array<Record<string, unknown>> }).lines;
+      const aligned: Array<Record<string, unknown>> = [];
+
+      for (let i = 0; i < expectedCount; i++) {
+        const base = (origLines[i] ?? {}) as Record<string, unknown>;
+        const def = defaultNormalizedCaptionRect(i, expectedCount);
+        aligned.push({
+          ...base,
+          text: contextLines[i],
+          x: typeof base.x === 'number' && Number.isFinite(base.x) ? base.x : def.x,
+          y: typeof base.y === 'number' && Number.isFinite(base.y) ? base.y : def.y,
+          w: typeof base.w === 'number' && Number.isFinite(base.w) ? base.w : def.w,
+          h: typeof base.h === 'number' && Number.isFinite(base.h) ? base.h : def.h,
+        });
+      }
+
+      return {
+        ...(result as Record<string, unknown>),
+        lines: aligned,
+      };
     },
     {
       name: toolName,

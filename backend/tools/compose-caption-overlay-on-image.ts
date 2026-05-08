@@ -38,6 +38,9 @@ const rubyLineSchema = z.object({
 });
 
 function coerceCaptionRubyLines(raw: unknown): CaptionRubyLine[] {
+  if (raw == null) {
+    throw new Error('renderMode=ruby 时 captionRubyLines 为必填');
+  }
   const arr: CaptionRubyLine[] =
     typeof raw === 'string'
       ? parseCaptionRubyPayload(raw).lines
@@ -70,17 +73,24 @@ function create(_config: ToolConfig, context: ToolContext) {
     async (input: {
       imagePath: string;
       lines: ScriptLine[];
-      captionRubyLines: unknown;
+      captionRubyLines?: unknown;
+      renderMode?: 'ruby' | 'plain';
       sessionId?: string;
       allowEditCaptionText?: boolean;
     }) => {
       const sessionId = input.sessionId || context.getDefaultSessionId();
       const lines = z.array(scriptLineSchema).parse(input.lines) as ScriptLine[];
-      const rubyLines = coerceCaptionRubyLines(input.captionRubyLines).map((line, i) => ({
-        ...line,
-        items: normalizeCaptionRubyItemsToScriptText(lines[i]?.text ?? '', line.items),
-      }));
-      assertCaptionRubyMatchesScriptLines(lines, rubyLines);
+      const renderMode: 'ruby' | 'plain' = input.renderMode ?? 'ruby';
+      const rubyLines =
+        renderMode === 'ruby'
+          ? coerceCaptionRubyLines(input.captionRubyLines).map((line, i) => ({
+              ...line,
+              items: normalizeCaptionRubyItemsToScriptText(lines[i]?.text ?? '', line.items),
+            }))
+          : undefined;
+      if (renderMode === 'ruby') {
+        assertCaptionRubyMatchesScriptLines(lines, rubyLines ?? []);
+      }
 
       const workspaceFs = getWorkspaceFilesystem({});
       const workspaceRoot = workspaceFs.root;
@@ -108,7 +118,7 @@ function create(_config: ToolConfig, context: ToolContext) {
           y: pix.y,
           w: pix.w,
           h: pix.h,
-          items: rubyLines[i].items,
+          items: renderMode === 'ruby' ? (rubyLines?.[i]?.items ?? []) : [],
         };
       });
 
@@ -120,6 +130,7 @@ function create(_config: ToolConfig, context: ToolContext) {
         captionBoxes,
         captionStyle: { ...DEFAULT_CAPTION_OVERLAY_STYLE },
         allowEditCaptionText: input.allowEditCaptionText === true,
+        renderMode,
       };
 
       const merged = await context.requestApprovalViaHITL('ai.image_caption_overlay', hitlPayload);
@@ -135,7 +146,7 @@ function create(_config: ToolConfig, context: ToolContext) {
         y: number;
         w: number;
         h: number;
-        items: Array<{ char: string; reading: string }>;
+        items?: Array<{ char: string; reading: string }>;
       }>;
 
       const boxesForRender = mergedBoxes.map((b) => ({
@@ -144,7 +155,7 @@ function create(_config: ToolConfig, context: ToolContext) {
         w: b.w,
         h: b.h,
         text: b.text,
-        items: b.items,
+        items: Array.isArray(b.items) ? b.items : [],
       }));
 
       return composeCaptionOverlayImage({
@@ -165,7 +176,14 @@ function create(_config: ToolConfig, context: ToolContext) {
           .describe('VL 字幕区结果（含归一化 x,y,w,h），通常来自 suggest_caption_regions'),
         captionRubyLines: z
           .union([z.string(), z.array(rubyLineSchema)])
-          .describe('结构化 ruby JSON 字符串，或 lines 数组（index + items[{char,reading}]）'),
+          .optional()
+          .describe(
+            '结构化 ruby JSON 字符串，或 lines 数组（index + items[{char,reading}]）。renderMode=ruby 时必填；renderMode=plain 时可省略'
+          ),
+        renderMode: z
+          .enum(['ruby', 'plain'])
+          .optional()
+          .describe('渲染模式：ruby=字幕+注音；plain=仅字幕（不需要 captionRubyLines）'),
         sessionId: z.string().optional(),
         allowEditCaptionText: z
           .boolean()
