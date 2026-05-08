@@ -45,6 +45,9 @@ interface ChatContextType {
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
+/** dev StrictMode 下会 mount/unmount/mount，需跨实例去重首次加载案例列表 */
+let initialCasesPromise: Promise<void> | null = null;
+
 export function ChatProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [todos, setTodos] = useState<TodoItem[]>([]);
@@ -99,7 +102,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         console.warn('[ChatProvider] Failed to load cases:', error);
       }
     };
-    void loadCases();
+    if (!initialCasesPromise) {
+      initialCasesPromise = loadCases();
+    } else {
+      void initialCasesPromise;
+    }
     return () => {
       cancelled = true;
     };

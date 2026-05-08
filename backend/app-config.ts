@@ -9,6 +9,8 @@ import Store from 'electron-store';
 import { getWorkspaceFilesystem } from './services/fs.js';
 
 const AUDIO_RECORD_FILENAME = 'audio_record.json';
+let cachedStore: Store<Partial<AppConfig>> | null = null;
+let lastLoggedConfigPath: string | null = null;
 
 /** 非 Electron 环境下使用的 userData 目录，与应用配置路径一致：…/Roaming/jiaojiao（对应 config.json 所在目录） */
 function getDefaultUserDataDir(): string {
@@ -26,29 +28,34 @@ function getDefaultUserDataDir(): string {
 }
 
 function getConfigStore(): Store<Partial<AppConfig>> {
+  if (cachedStore) return cachedStore;
   try {
     const { app } = require('electron');
     if (app && typeof app.getPath === 'function') {
       const userData = app.getPath('userData');
-      return new Store({
+      cachedStore = new Store({
         name: 'config',
         cwd: userData,
       } as any) as Store<Partial<AppConfig>>;
+      return cachedStore;
     }
   } catch {
     // 非 Electron 或 app 未 ready（如 vitest 中）：使用与开发态 Electron 相同的目录，便于集成测试读到配置
   }
   try {
     const cwd = getDefaultUserDataDir();
-    return new Store({ name: 'config', cwd } as any) as Store<Partial<AppConfig>>;
+    cachedStore = new Store({ name: 'config', cwd } as any) as Store<Partial<AppConfig>>;
+    return cachedStore;
   } catch {
     // eslint-disable-next-line no-console
     console.log('[app-config] 使用 mock store（无配置文件）');
-    return {
+    const mock = {
       store: {},
       set: () => {},
       get: () => undefined,
-    } as any;
+    } as any as Store<Partial<AppConfig>>;
+    cachedStore = mock;
+    return mock;
   }
 }
 
@@ -83,7 +90,8 @@ export async function loadConfig(): Promise<AppConfig> {
   const store = getConfigStore();
   const configPath = (store as { path?: string }).path;
   lastLoadedConfigPath = configPath || null;
-  if (configPath) {
+  if (configPath && configPath !== lastLoggedConfigPath) {
+    lastLoggedConfigPath = configPath;
     // eslint-disable-next-line no-console
     console.log('[app-config] 配置文件路径:', configPath);
   }

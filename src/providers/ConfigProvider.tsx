@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import type { AppConfig } from '../types/types';
 
 interface ConfigContextType {
@@ -12,16 +12,15 @@ interface ConfigContextType {
 
 const ConfigContext = createContext<ConfigContextType | undefined>(undefined);
 
+/** dev StrictMode 下会 mount/unmount/mount，需跨实例去重首次加载 */
+let initialLoadPromise: Promise<void> | null = null;
+
 export function ConfigProvider({ children }: { children: ReactNode }) {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [needApiKeyConfig, setNeedApiKeyConfig] = useState(false);
 
-  useEffect(() => {
-    loadConfig();
-  }, []);
-
-  const loadConfig = async (caseId?: string) => {
+  const loadConfig = useCallback(async (caseId?: string) => {
     try {
       if (!window.electronAPI?.config) {
         console.warn('electronAPI.config not available, using default config');
@@ -45,7 +44,16 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!initialLoadPromise) {
+      initialLoadPromise = loadConfig();
+    } else {
+      // 复用同一次加载，避免 StrictMode 双次 IPC
+      void initialLoadPromise;
+    }
+  }, [loadConfig]);
 
   const reloadUIForCase = async (caseId: string) => {
     try {

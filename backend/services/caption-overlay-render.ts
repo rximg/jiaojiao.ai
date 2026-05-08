@@ -59,6 +59,18 @@ function escapeXml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
+function wrapTextByChars(text: string, maxCharsPerLine: number, maxLines: number): string[] {
+  const t = (text ?? '').trim();
+  if (!t) return [];
+  const chars = Array.from(t);
+  const perLine = Math.max(1, Math.floor(maxCharsPerLine));
+  const lines: string[] = [];
+  for (let i = 0; i < chars.length && lines.length < maxLines; i += perLine) {
+    lines.push(chars.slice(i, i + perLine).join(''));
+  }
+  return lines;
+}
+
 function buildBoxFragment(box: CaptionOverlayBoxInput, style: CaptionOverlayStyleParams): string {
   const { x, y, w, h, items } = box;
   const pad = style.boxPaddingPx;
@@ -84,6 +96,32 @@ function buildBoxFragment(box: CaptionOverlayBoxInput, style: CaptionOverlayStyl
   fragments.push(
     `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" ry="10" ${fillAttr} stroke="${escapeXml(b.stroke)}" stroke-width="${b.strokeWidth}"${dashAttr} />`
   );
+
+  // plain 模式：items 为空时只渲染整句 text（允许换行）
+  if (!items || items.length === 0) {
+    const innerW = Math.max(0, w - pad * 2);
+    const innerH = Math.max(0, h - pad * 2);
+    const approxCharW = Math.max(6, textSize * 0.95);
+    const maxChars = Math.max(1, Math.floor(innerW / approxCharW));
+    const lineHeight = textSize * 1.2;
+    const maxLines = Math.max(1, Math.floor(innerH / lineHeight));
+    const lines = wrapTextByChars(box.text, maxChars, maxLines);
+    if (lines.length > 0) {
+      const totalH = lines.length * lineHeight;
+      const startY = y + (h - totalH) / 2 + lineHeight / 2;
+      const midX = x + w / 2;
+      const tspans = lines
+        .map((ln, idx) => {
+          const dy = idx === 0 ? '0' : String(lineHeight);
+          return `<tspan x="${midX}" dy="${dy}">${escapeXml(ln)}</tspan>`;
+        })
+        .join('');
+      fragments.push(
+        `<text x="${midX}" y="${startY}" text-anchor="middle" dominant-baseline="middle" font-size="${textSize}" font-family="${escapeXml(style.fontFamily)}" fill="${escapeXml(style.captionTextColor)}" ${stroke}>${tspans}</text>`
+      );
+    }
+    return `<g>${fragments.join('\n')}</g>`;
+  }
 
   for (const it of items) {
     const colW = Math.max(textSize, rubySize) * 0.92;

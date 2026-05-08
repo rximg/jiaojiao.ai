@@ -14,6 +14,11 @@ const __dirname = path.dirname(__filename);
 // 延迟到 app.ready 后初始化，保证 getPath('userData') 正确
 let store: Store<Record<string, unknown>> | null = null;
 
+// dev 模式下 React StrictMode 可能触发重复 IPC；主进程侧做轻量缓存，避免重复读盘与重复日志刷屏
+let cachedBackendConfigDir: string | null = null;
+let cachedCaseMetas: { configDir: string; metas: CaseMeta[] } | null = null;
+const cachedUiByCaseId = new Map<string, { configDir: string; ui: Record<string, unknown> }>();
+
 /** 配置版本号使用 package.json 的 version，通过 app.getVersion() 获取 */
 function getAppVersion(): string {
   return app.getVersion();
@@ -161,14 +166,19 @@ function loadCaseMetasFromSkill(configDir: string): CaseMeta[] | null {
 
 /** 读取案例元数据：仅从 skills/index + skills/<name>/config.yaml 读取 */
 function loadCaseMetas(configDir: string): CaseMeta[] {
+  if (cachedCaseMetas && cachedCaseMetas.configDir === configDir) {
+    return cachedCaseMetas.metas;
+  }
   const fromSkill = loadCaseMetasFromSkill(configDir);
   if (fromSkill && fromSkill.length > 0) {
     log.info('[config] loadCaseMetas from skills/index.yaml, count:', fromSkill.length);
-    return fromSkill;
+    cachedCaseMetas = { configDir, metas: fromSkill };
+    return cachedCaseMetas.metas;
   }
 
   log.warn('[config] loadCaseMetas found no cases in skills/index.yaml');
-  return [];
+  cachedCaseMetas = { configDir, metas: [] };
+  return cachedCaseMetas.metas;
 }
 
 /** 默认案例 ID */
@@ -176,12 +186,14 @@ const DEFAULT_CASE_ID = 'encyclopedia';
 
 /** 解析 backend/config 目录路径：打包后从 extraResources（resources/backend/config），开发时从项目 backend/config */
 function resolveBackendConfigDir(): string {
+  if (cachedBackendConfigDir) return cachedBackendConfigDir;
   // 打包后：backend 通过 extraResources 复制到 resources/backend/
   if (app.isPackaged && process.resourcesPath) {
     const fromResources = path.join(process.resourcesPath, 'backend', 'config');
     if (fs.existsSync(fromResources)) {
       log.info('[config] backend/config from extraResources:', fromResources);
-      return fromResources;
+      cachedBackendConfigDir = fromResources;
+      return cachedBackendConfigDir;
     }
     log.info('[config] extraResources config dir not found:', fromResources);
   }
@@ -189,17 +201,20 @@ function resolveBackendConfigDir(): string {
   const fromAppRoot = path.join(appRoot, 'backend', 'config');
   if (fs.existsSync(fromAppRoot)) {
     log.info('[config] backend/config from appRoot:', fromAppRoot);
-    return fromAppRoot;
+    cachedBackendConfigDir = fromAppRoot;
+    return cachedBackendConfigDir;
   }
   // 开发：可能在 electron/ipc（源码）或 dist-electron/ipc（Vite 编译），先试一层再试两层
   const oneUp = path.resolve(__dirname, '..', 'backend', 'config');
   if (fs.existsSync(oneUp)) {
     log.info('[config] backend/config from __dirname+1:', oneUp);
-    return oneUp;
+    cachedBackendConfigDir = oneUp;
+    return cachedBackendConfigDir;
   }
   const twoUp = path.resolve(__dirname, '..', '..', 'backend', 'config');
   log.info('[config] backend/config from __dirname+2:', twoUp);
-  return twoUp;
+  cachedBackendConfigDir = twoUp;
+  return cachedBackendConfigDir;
 }
 
 /** 返回 backend/config 目录（供 AgentFactory 等使用，打包后指向 resources/backend/config） */
@@ -210,6 +225,10 @@ export function getBackendConfigDir(): string {
 /** Skill-First：从 skills/<name>/config.yaml 加载 UI 配置 */
 function loadUIConfigFromSkill(configDir: string, caseId: string): Record<string, unknown> | null {
   try {
+    const cached = cachedUiByCaseId.get(caseId);
+    if (cached && cached.configDir === configDir) {
+      return cached.ui;
+    }
     const skillDirRoot = path.join(configDir, 'skills');
     const indexPath = path.join(skillDirRoot, 'index.yaml');
     if (!fs.existsSync(indexPath)) return null;
@@ -224,7 +243,11 @@ function loadUIConfigFromSkill(configDir: string, caseId: string): Record<string
 
     const cfgContent = fs.readFileSync(configPath, 'utf-8');
     const config = yaml.load(cfgContent) as { ui?: Record<string, unknown> } | undefined;
-    return config?.ui ?? null;
+    const ui = config?.ui ?? null;
+    if (ui) {
+      cachedUiByCaseId.set(caseId, { configDir, ui });
+    }
+    return ui;
   } catch {
     return null;
   }

@@ -29,4 +29,24 @@ describe('caption-overlay-render', () => {
     expect(svg).toContain('width="400"');
     expect(svg).toMatch(/fill="none"|fill="transparent"/);
   });
+
+  it('buildCaptionOverlaySvg renders plain text when items empty', () => {
+    const svg = buildCaptionOverlaySvg(
+      400,
+      300,
+      [
+        {
+          x: 10,
+          y: 200,
+          w: 380,
+          h: 80,
+          text: '这是一句比较长的台词需要换行展示',
+          items: [],
+        },
+      ],
+      DEFAULT_CAPTION_OVERLAY_STYLE
+    );
+    expect(svg).toContain('这是一句');
+    expect(svg).toContain('font-size');
+  });
 });

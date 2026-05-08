@@ -455,6 +455,7 @@ export default function ImageCaptionOverlayEditor({
                             fontFamily: localStyle.fontFamily,
                             ...strokeStyle,
                             wordBreak: 'break-word',
+                            whiteSpace: 'pre-wrap',
                           }}
                         >
                           {box.text}

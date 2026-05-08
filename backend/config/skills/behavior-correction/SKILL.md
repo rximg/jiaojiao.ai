@@ -14,7 +14,7 @@ description: 行为纠正绘本制作系统
 
 ## Todo 列表（固定 6 项，与下方步骤一一对应）
 开始时用 write_todos 创建 6 项，每项的 content **必须严格使用**下面之一（不要改写、不要加入用户主题）：
-第1项 content: 「生成双分镜图片」；第2项: 「生成字幕（含 ruby）」；第3项: 「字幕区布局（VL + HITL）」；第4项: 「字幕叠层确认」；第5项: 「将台词合成语音」；第6项: 「完成工作流并返回结果」。
+第1项 content: 「生成双分镜图片」；第2项: 「生成字幕（台词）」；第3项: 「字幕区布局（VL + HITL）」；第4项: 「字幕叠层确认」；第5项: 「将台词合成语音」；第6项: 「完成工作流并返回结果」。
 后续只按「第 n 项」更新 status 为 completed，不要修改 content；这样前端能正确识别每一步进度。
 
 ## 工作流程（与上述 6 项一一对应，每步完成后立即 write_todos 将对应项标 completed）
@@ -25,18 +25,8 @@ description: 行为纠正绘本制作系统
    - 提示词格式示例：「儿童绘本插画，卡通风格，明亮色彩，一张图分为左右两个场景。左边场景：一个[年龄]的宝宝正在[不良行为描述]，表情[相关表情]。右边场景：[不良行为的后果描述]，宝宝表情[相关表情]。背景简洁温馨，适合幼儿观看。」
    - 调用 generate_image(prompt: "构造的提示词", size: "1472*1104")
 
-2. **字幕（含 ruby）**（第 2 项）：
-   - 根据用户描述，直接生成 **2 句字幕**（与分镜对应），并为**每个汉字/字符**给出带声调的读音（ruby），标点 `reading` 用空串 `""`。
-   - 同时产出结构化 **`captionRubyLines`**（JSON），形状与工具入参一致，例如：
-     ```json
-     {
-       "lines": [
-         { "index": 0, "items": [{ "char": "宝", "reading": "bǎo" }, { "char": "。", "reading": "" }] },
-         { "index": 1, "items": [...] }
-       ]
-     }
-     ```
-   - `lines[i].items` 拼接后的字符串必须与第 i 句字幕 `text` **完全一致**（含标点），否则后续 `compose_caption_overlay_on_image` 会校验失败。
+2. **字幕（台词）**（第 2 项）：
+   - 根据用户描述，直接生成 **2 句字幕**（与分镜对应）。
    - 台词风格：简短（10-20 字量级）、口语化、正向引导。
 
 3. **字幕区布局**（第 3 项）：
@@ -44,7 +34,7 @@ description: 行为纠正绘本制作系统
    - 等待 HITL 确认后，得到带归一化 `x,y,w,h` 的 `lines`（`GenerateScriptFromImageResult.lines`）。
 
 4. **字幕叠层**（第 4 项）：
-   - 调用 `compose_caption_overlay_on_image(imagePath: 仍为第1步原插画路径, lines: 上一步返回的 lines, captionRubyLines: 第2步产出的对象或 JSON 字符串)`
+   - 调用 `compose_caption_overlay_on_image(imagePath: 仍为第1步原插画路径, lines: 上一步返回的 lines, renderMode: "plain", allowEditCaptionText: true)`
    - HITL 确认几何与字号后得到**叠字幕成品图路径**；后续 **finalize_workflow 的 imagePath 必须使用本步返回的成品路径**。
 
 5. **语音**（第 5 项）：`batch_tool_call(tool: "generate_audio", items: [{ params: { text: 分镜1字幕, voice: "chinese_female", format: "mp3" } }, { params: { text: 分镜2字幕, voice: "chinese_female", format: "mp3" } }])`
