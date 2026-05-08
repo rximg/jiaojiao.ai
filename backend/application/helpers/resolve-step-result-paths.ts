@@ -44,7 +44,7 @@ export async function resolveStepResultPaths<T extends StepResultLike>(
         }
         // 即便是绝对路径，如果它是 "/foo.png" 这种被误判的形式，上面已通过 isAbsolutePath 规避；
         // 这里保留原样。
-        return { ...sr, payload: { ...sr.payload, path: abs } };
+        return { ...sr, payload: { ...sr.payload, path: raw } };
       }
       return sr;
     });
